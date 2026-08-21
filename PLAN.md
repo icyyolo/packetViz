@@ -278,6 +278,19 @@ Every step below has a command to run and an expected result.
 **Phase 1 done when:** `npm test` is green, no ARP field value exists outside the
 encoder's byte output, and the decoder survives garbage.
 
+> **Status: complete (2026-08-21, commit `49b3fb9`).** 36 tests green across 7
+> files: 1000-case round-trip, 5500-case fuzz. Removing the bounds check in
+> `runSpec` fails 3 of the 5 fuzz tests, so 1.6 bites. Three deviations recorded:
+> field ids use tshark's names (`eth.dst`, `arp.opcode`, `arp.src.hw_mac`) so the
+> Phase 2 mapping table is near-identity; `src/core/registry.ts` was built now
+> rather than in Phase 8 because Ethernet-to-ARP dispatch needs it, and its
+> EtherType table is the seed of 8.1's derived `implemented` flag; `ByteReader`
+> has no production caller until Phase 4's DHCP option loop and Phase 7's pcap
+> reader. Clause 2 of the decoder contract ("never loops forever") is enforced by
+> a per-case elapsed-time budget plus an explicit test timeout, not a true
+> per-case timeout — Phase 1 has no loop over untrusted data, so the real test of
+> that clause arrives with the DHCP TLV loop in 4.8.
+
 ### Phase 2 — pcap export and the tshark differential test
 
 | # | Step | Verify |
@@ -290,6 +303,39 @@ encoder's byte output, and the decoder survives garbage.
 
 **Phase 2 done when:** CI proves, on every commit, that our decoder and Wireshark
 agree field-for-field on generated ARP traffic.
+
+> **Status: complete (2026-08-21).** 51 tests green across 9 files. tshark 3.6.2
+> compares 26 field values across 2 packets; the mapping table covers all 13 leaf
+> field ids the decoder emits, with zero exceptions. Every Phase 1 field id turned
+> out to match tshark's name exactly, `eth.padding` included, but the table is
+> still written out explicitly — DHCP will diverge (`dhcp.opt.53` vs tshark's
+> `dhcp.option.dhcp`), and an explicit table makes a rename on either side fail
+> loudly instead of silently skipping a field.
+>
+> Two things worth carrying forward:
+>
+> - **Comparison is against `node.raw`, not our rendered display string.** The
+>   test asks whether Wireshark and our decoder read the same bytes the same way,
+>   not whether we format them the same way.
+> - **Assertion A is a weaker oracle than the plan assumed.** Corrupting the
+>   encoder's `hlen` from 6 to 7 produced a file tshark dissects with *no* expert
+>   info at all — it obediently reads 7-byte hardware addresses and reports
+>   "Who has 0.2.0.0? Tell 0.0.1.0". Structural validity alone would have passed
+>   it. Assertion B caught it, along with the reverse-coverage check. Read: the
+>   field-equality table is the load-bearing assertion, and expert-info is a
+>   cheap extra, not the proof.
+>
+> Verified by deliberate breakage: swapping two spec entries fails B with
+> `packet 0, field arp.hw.size vs tshark arp.hw.size: expected '4' to be '6'`;
+> removing tshark from `PATH` skips 7 tests with a stderr warning; adding
+> `REQUIRE_TSHARK=1` turns that skip into a failure (CI sets it).
+>
+> One scaffold change was needed: the new tests import node builtins
+> (`node:crypto`, `node:child_process`), which `tsconfig.app.json` cannot see
+> because its `types` is `["vite/client"]`. Tests moved to their own
+> `tsconfig.test.json` (`types: ["node"]`, referenced from `tsconfig.json`), so
+> `npm run build` still typechecks them without leaking node globals into the
+> browser build.
 
 ### Phase 3 — Timeline, the four views, ARP lesson
 
