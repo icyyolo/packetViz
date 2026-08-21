@@ -44,7 +44,7 @@ This is enforced in CI by a differential test against `tshark`.
 | Field explainers | `description` + RFC reference live in the `FieldSpec` tables, next to the definition that drives decoding. Shared by field tree, detail panel and reference page. |
 | Reference page | `#/reference/:protocol` — generated from the specs: RFC-style header diagram, field table, value dictionaries, and a "see it live" deep link per field. |
 | Docs | `ARCHITECTURE.md` (~1 page) + README with Playwright-generated screenshots and one GIF. |
-| Repo | `/home/mx/packetviz` (WSL-native filesystem). |
+| Repo | Local dir `/home/mx/packetviz` (lowercase, WSL-native filesystem); GitHub remote `icyyolo/packetViz`. The two need not match — but `base` in `vite.config.ts` must match the **GitHub** name's case exactly, or every Pages asset 404s. |
 | Hosting | GitHub Pages via GitHub Actions. |
 | Routing | `react-router-dom` with `HashRouter` — deep-linkable lesson URLs, no Pages 404.html hack. |
 | Home page | Lesson cards + a concept map **generated from the protocol registry**, so it doubles as an honest implemented/not-implemented status view. Map lands in Phase 8, after the registry is real. |
@@ -90,7 +90,7 @@ computed by compiling the scenario and reading the decode, never typed by hand.
 ## Repository layout
 
 ```
-/home/mx/packetviz
+/home/mx/packetviz                  # local dir; GitHub remote is icyyolo/packetViz
 ├── PLAN.md                        # this file
 ├── README.md
 ├── ARCHITECTURE.md
