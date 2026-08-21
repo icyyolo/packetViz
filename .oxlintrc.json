@@ -1,0 +1,26 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["react", "typescript", "oxc"],
+  "rules": {
+    "react/rules-of-hooks": "error",
+    "react/only-export-components": ["warn", { "allowConstantExport": true }]
+  },
+  "overrides": [
+    {
+      "files": ["src/views/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["**/lessons/**", "**/lessons"],
+                "message": "INVARIANT: layer views must decode a Uint8Array, never read a lesson scenario. See ARCHITECTURE.md."
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
