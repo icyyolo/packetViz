@@ -5,6 +5,8 @@
 
 import { buildArpReplyFrame, buildArpRequestFrame } from '../src/core/protocols/arp.ts'
 import type { PcapPacket } from '../src/core/pcap/write.ts'
+import type { Scenario } from '../src/scenario/types.ts'
+import { compileScenario } from '../src/scenario/compile.ts'
 
 export const HOST_A = { mac: 'aa:bb:cc:00:00:01', ip: '10.0.0.1' }
 export const HOST_B = { mac: 'aa:bb:cc:00:00:02', ip: '10.0.0.2' }
@@ -22,4 +24,17 @@ export function arpExchange(): PcapPacket[] {
     { frame: arpRequestFrame(), tMs: 0 },
     { frame: arpReplyFrame(), tMs: 12 },
   ]
+}
+
+/**
+ * A whole lesson as a capture, exactly as `ExportPcapButton` writes it: the
+ * compiled frames, timestamped at transmission. Lets the Wireshark differential
+ * run over the same bytes a visitor downloads.
+ */
+export function lessonCapture(scenario: Scenario): PcapPacket[] {
+  const timeline = compileScenario(scenario)
+  return timeline.packets.map((packet, index) => ({
+    frame: packet.frame,
+    tMs: timeline.marks[index]?.sentMs ?? 0,
+  }))
 }

@@ -40,10 +40,14 @@ describe('routing', () => {
 
   it('derives home-page card badges from the decode, not from the registry', () => {
     renderAt('/')
-    const card = screen.getByRole('link', { name: /ARP/ })
+    const card = screen.getByRole('link', { name: /finding a MAC address/ })
     expect(within(card).getByText('2 packets')).toBeTruthy()
     expect(within(card).getByText('ETH')).toBeTruthy()
     expect(within(card).getByText('ARP')).toBeTruthy()
+
+    // The second lesson's count is derived the same way, from four packets.
+    const spoofing = screen.getByRole('link', { name: /spoofing/ })
+    expect(within(spoofing).getByText('4 packets')).toBeTruthy()
   })
 })
 
@@ -119,5 +123,62 @@ describe('the four layers render together', () => {
 
     // Every layer follows the same `t`: the ladder playhead moved with it.
     expect(document.querySelector('.flow-playhead text')?.textContent).toBe('600 ms')
+  })
+})
+
+describe('the spoofing lesson', () => {
+  it('shows an empty cache for every host before anything arrives', () => {
+    renderAt('/lesson/arp-spoofing')
+    expect(document.querySelectorAll('.cache')).toHaveLength(3)
+
+    fireEvent.change(screen.getByLabelText('Timeline position in milliseconds'), {
+      target: { value: '0' },
+    })
+    expect(document.querySelectorAll('.cache-empty')).toHaveLength(3)
+
+    // ...and the first frame to land teaches its answerer, not its asker: Bob
+    // caches Alice from the request he is about to reply to.
+    fireEvent.change(screen.getByLabelText('Timeline position in milliseconds'), {
+      target: { value: '120' },
+    })
+    expect(document.querySelectorAll('.cache-empty')).toHaveLength(2)
+    const bob = document.querySelector('[aria-label="Bob ARP cache"]')
+    expect(bob?.textContent).toContain('10.0.0.1')
+  })
+
+  it('fills Alice\'s cache with Bob\'s real address, then lets it be overwritten', () => {
+    renderAt('/lesson/arp-spoofing')
+    const slider = screen.getByLabelText('Timeline position in milliseconds')
+    const alice = () => document.querySelector('[aria-label="Alice ARP cache"]') as HTMLElement
+
+    fireEvent.change(slider, { target: { value: '600' } })
+    expect(alice().textContent).toContain('aa:bb:cc:00:00:02')
+    expect(alice().querySelector('.cache-flag')).toBeNull()
+
+    fireEvent.change(slider, { target: { value: '1600' } })
+    expect(alice().textContent).toContain('aa:bb:cc:00:00:66')
+    expect(alice().querySelector('.cache-flag')?.textContent).toBe('overwritten')
+
+    // Scrubbing back is not undo — it is the same pure function of t.
+    fireEvent.change(slider, { target: { value: '600' } })
+    expect(alice().textContent).toContain('aa:bb:cc:00:00:02')
+  })
+
+  it('diffs the spoof against the honest reply it imitates', async () => {
+    const user = userEvent.setup()
+    renderAt('/lesson/arp-spoofing?p=3')
+
+    await user.click(screen.getByText(/Difference from packet #3/))
+    const rows = document.querySelectorAll('.diff-table tbody tr')
+    expect(rows.length).toBeGreaterThan(0)
+    expect(document.querySelector('.diff-table')?.textContent).toContain('aa:bb:cc:00:00:66')
+  })
+
+  it('marks the frames a host discards on the ladder', () => {
+    renderAt('/lesson/arp-spoofing?p=3')
+    const outcomes = Array.from(document.querySelectorAll('.flow-arrow.is-selected .flow-outcome'))
+      .map((node) => node.textContent)
+    expect(outcomes).toContain('NIC drops it')
+    expect(outcomes).toContain('entry overwritten')
   })
 })

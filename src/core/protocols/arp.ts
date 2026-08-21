@@ -6,7 +6,7 @@
  */
 
 import { ByteWriter } from '../bytes.ts'
-import type { DecodeResult, FieldNode } from '../field.ts'
+import { findField, type DecodeResult, type DecodedPacket, type FieldNode } from '../field.ts'
 import { formatIpv4, formatMac, hex, parseIpv4, parseMac } from '../format.ts'
 import { enumRender, runSpec, specBytes, type FieldSpec } from '../spec.ts'
 import { BROADCAST_MAC, ETHER_TYPE, ETHER_TYPE_NAMES, encodeEthernet } from './ethernet.ts'
@@ -204,6 +204,27 @@ export function buildArpRequestFrame(sender: ArpEndpoint, targetIp: string): Uin
   })
 }
 
+/**
+ * A gratuitous ARP: a reply nobody asked for, announcing sender.ip -> sender.mac
+ * to the whole segment. Sender and target protocol address are the same address
+ * — that equality IS what makes it gratuitous — and it is broadcast, because the
+ * point is for every neighbour to update its cache.
+ */
+export function buildGratuitousArpFrame(sender: ArpEndpoint): Uint8Array {
+  return encodeEthernet({
+    dst: BROADCAST_MAC,
+    src: sender.mac,
+    etherType: ETHER_TYPE.ARP,
+    payload: encodeArp({
+      opcode: ARP_OPCODE.REPLY,
+      senderMac: sender.mac,
+      senderIp: sender.ip,
+      targetMac: BROADCAST_MAC,
+      targetIp: sender.ip,
+    }),
+  })
+}
+
 export function buildArpReplyFrame(sender: ArpEndpoint, target: ArpEndpoint): Uint8Array {
   return encodeEthernet({
     dst: target.mac,
@@ -217,4 +238,50 @@ export function buildArpReplyFrame(sender: ArpEndpoint, target: ArpEndpoint): Ui
       targetIp: target.ip,
     }),
   })
+}
+
+/**
+ * Read an ARP exchange back out of a decoded frame.
+ *
+ * Everything here comes from `packet.tree`, which comes from the byte buffer.
+ * Nothing about who sent what is taken on trust from a scenario — which matters
+ * most in the spoofing lesson, where the whole point is that the bytes say one
+ * thing and the truth is another.
+ */
+export type ArpMessage = {
+  opcode: number
+  senderMac: string
+  senderIp: string
+  targetMac: string
+  targetIp: string
+  /** Ethernet destination. Not an ARP field: it is what the receiving NIC filters on. */
+  frameDst: string
+}
+
+export function arpMessage(packet: DecodedPacket): ArpMessage | undefined {
+  const raw = (id: string): Uint8Array | undefined => findField(packet.tree, id)?.raw
+  const opcodeRaw = raw('arp.opcode')
+  const senderMac = raw('arp.src.hw_mac')
+  const senderIp = raw('arp.src.proto_ipv4')
+  const targetMac = raw('arp.dst.hw_mac')
+  const targetIp = raw('arp.dst.proto_ipv4')
+  const frameDst = raw('eth.dst')
+
+  if (
+    opcodeRaw === undefined || opcodeRaw.length !== 2 ||
+    senderMac === undefined || senderIp === undefined ||
+    targetMac === undefined || targetIp === undefined ||
+    frameDst === undefined
+  ) {
+    return undefined
+  }
+
+  return {
+    opcode: (opcodeRaw[0] as number) * 256 + (opcodeRaw[1] as number),
+    senderMac: formatMac(senderMac),
+    senderIp: formatIpv4(senderIp),
+    targetMac: formatMac(targetMac),
+    targetIp: formatIpv4(targetIp),
+    frameDst: formatMac(frameDst),
+  }
 }

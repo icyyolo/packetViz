@@ -10,14 +10,33 @@
  * scenario.
  */
 
+import { outcomesOf, type CacheSnapshot, type Reception } from '../core/arp-cache.ts'
 import type { DecodedPacket } from '../core/field.ts'
 import type { CompiledTimeline } from '../scenario/compile.ts'
 import { useSelection } from './selection.ts'
 
 export type FlowViewProps = {
   timeline: CompiledTimeline
+  snapshots: CacheSnapshot[]
   tMs: number
 }
+
+/**
+ * What a receiving host did with the frame, in the fewest words that stay true.
+ * `sent` never renders — the sender is the tail of the arrow, not a target.
+ */
+const OUTCOME_LABEL: Record<Reception, string> = {
+  sent: '',
+  'not-addressed': 'NIC drops it',
+  ignored: 'not for me',
+  learned: 'caches sender',
+  refreshed: 'refreshes entry',
+  overwritten: 'entry overwritten',
+  answered: 'that is me — replies',
+}
+
+/** Outcomes where the frame never reached the ARP layer, or was discarded by it. */
+const DROPPED: ReadonlySet<Reception> = new Set<Reception>(['not-addressed', 'ignored'])
 
 const WIDTH = 720
 const HEAD_HEIGHT = 44
@@ -31,7 +50,7 @@ const LABEL_CHAR_WIDTH = 6.4
 const clamp = (value: number, low: number, high: number): number =>
   low > high ? (low + high) / 2 : Math.min(Math.max(value, low), high)
 
-export function FlowView({ timeline, tMs }: FlowViewProps) {
+export function FlowView({ timeline, snapshots, tMs }: FlowViewProps) {
   const { packetIndex, selectPacket, selectField } = useSelection()
   const hosts = timeline.hosts
   const columnWidth = WIDTH / (hosts.length + 1)
@@ -84,7 +103,11 @@ export function FlowView({ timeline, tMs }: FlowViewProps) {
 
       {timeline.marks.map((mark) => {
         const packet: DecodedPacket | undefined = timeline.packets[mark.packetIndex]
-        const targets = mark.to === null ? hosts.filter((h) => h.id !== mark.from) : [{ id: mark.to }]
+        // Every other host on the segment physically receives every frame; what
+        // separates broadcast from unicast is what they DO with it, which is
+        // read out of the bytes rather than from the scenario's `to` field.
+        const targets = hosts.filter((host) => host.id !== mark.from)
+        const outcomes = outcomesOf(snapshots, mark.packetIndex)
         const sent = mark.sentMs <= tMs
         const isSelected = mark.packetIndex === packetIndex
 
@@ -123,16 +146,32 @@ export function FlowView({ timeline, tMs }: FlowViewProps) {
               }
             }}
           >
-            {targets.map((target) => (
-              <line
-                key={target.id}
-                x1={xOf(mark.from)}
-                y1={yOf(mark.sentMs)}
-                x2={xOf(target.id)}
-                y2={yOf(mark.arrivedMs)}
-                markerEnd="url(#flow-arrow)"
-              />
-            ))}
+            {targets.map((target) => {
+              const outcome = outcomes.get(target.id) ?? 'ignored'
+              const dropped = DROPPED.has(outcome)
+              const toX = xOf(target.id)
+              return (
+                <g key={target.id} className={dropped ? 'is-dropped' : 'is-accepted'}>
+                  <line
+                    x1={xOf(mark.from)}
+                    y1={yOf(mark.sentMs)}
+                    x2={toX}
+                    y2={yOf(mark.arrivedMs)}
+                    markerEnd={dropped ? undefined : 'url(#flow-arrow)'}
+                  />
+                  {isSelected ? (
+                    <text
+                      className="flow-outcome"
+                      x={toX + (toX < xOf(mark.from) ? -6 : 6)}
+                      y={yOf(mark.arrivedMs) + 12}
+                      textAnchor={toX < xOf(mark.from) ? 'end' : 'start'}
+                    >
+                      {OUTCOME_LABEL[outcome]}
+                    </text>
+                  ) : null}
+                </g>
+              )
+            })}
             <text
               x={labelX}
               y={labelY}

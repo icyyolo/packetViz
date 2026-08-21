@@ -25,7 +25,9 @@ import { leafFields, type FieldNode } from '../src/core/field.ts'
 import { formatIpv4, formatMac } from '../src/core/format.ts'
 import { writePcap } from '../src/core/pcap/write.ts'
 import { decodeFrame } from '../src/core/registry.ts'
-import { arpExchange } from './fixtures.ts'
+import { arpSpoofingScenario } from '../src/lessons/arp-spoofing/scenario.ts'
+import type { PcapPacket } from '../src/core/pcap/write.ts'
+import { arpExchange, lessonCapture } from './fixtures.ts'
 
 type Kind = 'mac' | 'ipv4' | 'number' | 'bytes'
 
@@ -133,10 +135,41 @@ describe('Wireshark differential', () => {
     }
   })
 
-  describe.skipIf(!available)('on generated ARP traffic', () => {
+  it.skipIf(!available)('records the tshark version, so a field rename is traceable in CI logs', () => {
+    const version = execFileSync('tshark', ['-v'], { encoding: 'utf8' }).split('\n')[0]
+    process.stdout.write(`  oracle: ${version}\n`)
+    expect(version).toContain('TShark')
+  })
+
+  differential('on generated ARP traffic', 'arp.pcap', arpExchange(), [])
+
+  // The spoofing lesson makes a claim in prose — that a poisoned cache comes
+  // from a packet Wireshark finds nothing wrong with. That claim is only worth
+  // making if the oracle backs it, so the whole capture runs through the same
+  // differential rather than being taken on trust.
+  differential(
+    'on the spoofing lesson capture',
+    'arp-spoofing.pcap',
+    lessonCapture(arpSpoofingScenario),
+    // Wireshark's ARP dissector keeps its own mapping across the capture, so it
+    // catches the spoof the same way a monitoring tool would — not by finding a
+    // malformed frame (there isn't one) but by noticing that 10.0.0.2 changed
+    // hardware address. Pinned here because the lesson's prose makes exactly
+    // this claim, and prose is not evidence.
+    ['4\tDuplicate IP address configured (10.0.0.2)'],
+  )
+})
+
+function differential(
+  label: string,
+  filename: string,
+  packets: PcapPacket[],
+  /** Expected `frame.number\tmessage` rows, in order. Usually empty. */
+  expectedExpert: readonly string[],
+) {
+  describe.skipIf(!available)(label, () => {
     const dir = available ? mkdtempSync(join(tmpdir(), 'packetviz-')) : ''
-    const file = join(dir, 'arp.pcap')
-    const packets = arpExchange()
+    const file = join(dir, filename)
 
     if (available) writeFileSync(file, writePcap(packets))
 
@@ -147,30 +180,36 @@ describe('Wireshark differential', () => {
     const tshark = (args: string[]): string =>
       execFileSync('tshark', ['-r', file, ...args], { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 })
 
-    it('records the tshark version, so a field rename is traceable in CI logs', () => {
-      const version = execFileSync('tshark', ['-v'], { encoding: 'utf8' }).split('\n')[0]
-      process.stdout.write(`  oracle: ${version}\n`)
-      expect(version).toContain('TShark')
-    })
-
     it('opens the file and finds the expected packet count', () => {
       const parsed: unknown = JSON.parse(tshark(['-T', 'json']))
       expect(Array.isArray(parsed)).toBe(true)
       expect((parsed as unknown[]).length).toBe(packets.length)
     })
 
-    // Assertion A — structural validity.
-    it('flags nothing as malformed: every expert-info severity is empty', () => {
-      const lines = tshark(['-T', 'fields', '-e', '_ws.expert.severity']).split('\n')
-      const nonEmpty = lines.filter((line) => line.trim().length > 0)
-      expect(nonEmpty, `tshark raised expert info: ${nonEmpty.join(' | ')}`).toEqual([])
+    // Assertion A — structural validity. PI_ERROR is 0x800000; anything at or
+    // above it means tshark could not dissect what we wrote.
+    it('is structurally valid: no expert info reaches error severity', () => {
+      const severities = tshark(['-T', 'fields', '-e', '_ws.expert.severity'])
+        .split('\n')
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0)
+      for (const severity of severities) {
+        expect(Number.parseInt(severity, 10), `expert severity ${severity}`).toBeLessThan(0x800000)
+      }
     })
 
-    it('dissects both packets as Ethernet carrying ARP', () => {
+    it('raises exactly the expert info we expect, and nothing else', () => {
+      const rows = tshark(['-T', 'fields', '-e', 'frame.number', '-e', '_ws.expert.message'])
+        .split('\n')
+        .filter((line) => (line.split('\t')[1] ?? '').length > 0)
+      expect(rows, 'tshark expert info changed').toEqual([...expectedExpert])
+    })
+
+    it('dissects every packet as Ethernet carrying ARP', () => {
       const protocols = tshark(['-T', 'fields', '-e', 'frame.protocols'])
         .split('\n')
         .filter((line) => line.length > 0)
-      expect(protocols).toEqual(['eth:ethertype:arp', 'eth:ethertype:arp'])
+      expect(protocols).toEqual(packets.map(() => 'eth:ethertype:arp'))
     })
 
     // Assertion B — field equality, for every leaf field we emit.
@@ -232,4 +271,4 @@ describe('Wireshark differential', () => {
       expect(stale, `mapping table names fields this tshark does not emit: ${stale.join(', ')}`).toEqual([])
     })
   })
-})
+}

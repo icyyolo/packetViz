@@ -487,3 +487,125 @@ main {
 .layout-values code { color: var(--accent); font-family: var(--mono); }
 .layout-ref { margin: 0.3rem 0 0; font-size: 0.75rem; color: var(--text-dim); font-family: var(--mono); }
 .layout-note { margin: 0; color: var(--text-dim); font-size: 0.78rem; max-width: 78ch; }
+
+/* ---------- neighbour caches ---------- */
+
+.cache-section { margin: 1rem 0; }
+
+.caches {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 0.8rem;
+}
+
+.cache {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg-raised);
+  padding: 0.7rem 0.8rem;
+}
+.cache h3 { font-size: 0.95rem; display: flex; gap: 0.5rem; align-items: baseline; }
+.cache-addr { font-family: var(--mono); font-size: 0.75rem; color: var(--text-dim); }
+.cache-empty { margin: 0; color: var(--text-dim); font-family: var(--mono); font-size: 0.8rem; }
+
+.cache-table { width: 100%; border-collapse: collapse; font-size: 0.78rem; font-family: var(--mono); }
+.cache-table th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--text-dim);
+  font-family: system-ui, sans-serif;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding-bottom: 0.25rem;
+}
+.cache-table td { padding: 0.2rem 0.5rem 0.2rem 0; color: var(--text); }
+/* An overwritten entry is flagged by a border and the word itself, not by hue. */
+.cache-table tr.is-overwritten td { color: var(--error); }
+.cache-table tr.is-overwritten td:first-child { box-shadow: inset 2px 0 0 var(--error); padding-left: 0.4rem; }
+.cache-flag {
+  display: inline-block;
+  margin-left: 0.4rem;
+  border: 1px solid var(--error);
+  border-radius: 999px;
+  padding: 0 0.4rem;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* ---------- ladder delivery outcomes ---------- */
+
+.flow-arrow .is-dropped line { stroke-dasharray: 3 4; opacity: 0.45; }
+.flow-outcome {
+  fill: var(--text-dim);
+  font-size: 9.5px;
+  font-family: var(--mono);
+  paint-order: stroke;
+  stroke: var(--bg-sunken);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+
+/* ---------- packet diff ---------- */
+
+.diff { padding: 0.9rem; overflow-x: auto; }
+.diff-same { padding: 0.9rem; margin: 0; color: var(--text-dim); }
+
+.diff-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+.diff-table caption { text-align: left; color: var(--text-dim); padding-bottom: 0.5rem; }
+.diff-table th[scope='col'] {
+  text-align: left;
+  color: var(--text-dim);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid var(--line);
+  padding: 0.3rem 0.6rem 0.3rem 0;
+}
+.diff-table th[scope='row'] { text-align: left; font-weight: 400; padding: 0.35rem 0.6rem 0.35rem 0; }
+.diff-table td { padding: 0.35rem 0.6rem 0.35rem 0; font-family: var(--mono); font-size: 0.8rem; }
+.diff-table tr.is-selected th, .diff-table tr.is-selected td {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+.diff-value.is-changed { color: var(--accent-2); text-decoration: underline; }
+.diff-field {
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  color: var(--text);
+  text-align: left;
+  text-decoration: underline dotted var(--line);
+}
+.diff-field:hover { color: var(--accent-2); }
+
+/* ---------- hex header bands ---------- */
+
+.hex-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.9rem;
+  list-style: none;
+  margin: 0 0 0.5rem;
+  padding: 0;
+  font-size: 0.75rem;
+}
+.hex-legend-item { display: flex; align-items: baseline; gap: 0.35rem; }
+.hex-legend-name {
+  border-bottom: 3px solid currentColor;
+  padding: 0 0.1rem;
+  color: var(--text);
+}
+.hex-legend-range { font-family: var(--mono); color: var(--text-dim); }
+
+/* Background wash only: selection keeps the outline and underline, so the
+   boundary is visible in colour and the selection is still legible without it. */
+.hex-legend-item.is-sect-0 .hex-legend-name, .hex-cell.is-sect-0 { --sect: #56b4e9; }
+.hex-legend-item.is-sect-1 .hex-legend-name, .hex-cell.is-sect-1 { --sect: #009e73; }
+.hex-legend-item.is-sect-2 .hex-legend-name, .hex-cell.is-sect-2 { --sect: #cc79a7; }
+.hex-legend-item.is-sect-3 .hex-legend-name, .hex-cell.is-sect-3 { --sect: #e69f00; }
+.hex-legend-name { color: var(--sect, var(--text)); }
+.hex-cell[class*='is-sect-']:not(.is-selected) {
+  background: color-mix(in srgb, var(--sect) 12%, transparent);
+}

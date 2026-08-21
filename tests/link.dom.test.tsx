@@ -85,9 +85,13 @@ describe('field <-> byte linking', () => {
     const user = userEvent.setup()
     renderLinkedViews()
 
+    // Scoped to the tree: the hex legend names the containers, so an unscoped
+    // query for "Padding" would be ambiguous.
+    const tree = within(document.querySelector('[role="tree"]') as HTMLElement)
+
     let checked = 0
     for (const node of leafFields(packet.tree)) {
-      await user.click(screen.getByText(node.name))
+      await user.click(tree.getByText(node.name))
 
       const expected = Array.from({ length: node.byteLength }, (_x, i) => node.byteStart + i)
       expect(selectedOffsets(), `selecting ${node.id} highlighted the wrong bytes`).toEqual(expected)

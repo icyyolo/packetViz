@@ -11,12 +11,15 @@ import { markAt, type CompiledTimeline } from '../scenario/compile.ts'
 import type { Narration } from '../scenario/types.ts'
 import type { VirtualClock } from '../timeline/clock.ts'
 import { useClockSnapshot } from '../timeline/useTimeline.ts'
+import { ArpCacheView } from '../views/ArpCacheView.tsx'
 import { FieldDetailPanel } from '../views/FieldDetailPanel.tsx'
 import { FieldTreeView } from '../views/FieldTreeView.tsx'
 import { FlowView } from '../views/FlowView.tsx'
 import { HexView } from '../views/HexView.tsx'
 import { LayoutView } from '../views/LayoutView.tsx'
+import { PacketDiffView } from '../views/PacketDiffView.tsx'
 import { TopologyView } from '../views/TopologyView.tsx'
+import { useArpCaches } from '../views/arpCache.ts'
 import { useSelection } from '../views/selection.ts'
 import { ExportPcapButton } from './ExportPcapButton.tsx'
 import { Scrubber } from './Scrubber.tsx'
@@ -35,9 +38,15 @@ export function LessonShell(props: LessonShellProps) {
   const { tMs } = useClockSnapshot(clock)
   const { packetIndex, selectPacket, selectField } = useSelection()
 
+  const snapshots = useArpCaches(timeline)
   const currentMark = markAt(timeline.marks, tMs)
   const step = currentMark >= 0 ? narration.steps[currentMark] : undefined
   const packet = timeline.packets[packetIndex]
+
+  // Diff against the neighbouring packet: for the first one that means the
+  // packet it provokes, which for ARP is the request/reply swap.
+  const otherIndex = packetIndex === 0 ? 1 : packetIndex - 1
+  const other = timeline.packets[otherIndex]
 
   return (
     <article className="lesson">
@@ -51,7 +60,7 @@ export function LessonShell(props: LessonShellProps) {
 
       <section className="stage" aria-label="Topology and flow">
         <TopologyView timeline={timeline} tMs={tMs} />
-        <FlowView timeline={timeline} tMs={tMs} />
+        <FlowView timeline={timeline} snapshots={snapshots} tMs={tMs} />
       </section>
 
       <Scrubber clock={clock} timeline={timeline} />
@@ -59,6 +68,11 @@ export function LessonShell(props: LessonShellProps) {
       <section className="narration" aria-live="polite">
         <h2>{step?.title ?? 'Before the exchange'}</h2>
         <p>{step?.body ?? narration.intro}</p>
+      </section>
+
+      <section className="cache-section" aria-label="Neighbour caches">
+        <h2>Neighbour caches at {tMs.toFixed(0)} ms</h2>
+        <ArpCacheView timeline={timeline} snapshots={snapshots} tMs={tMs} />
       </section>
 
       <nav className="packet-tabs" aria-label="Packets">
@@ -116,6 +130,22 @@ export function LessonShell(props: LessonShellProps) {
               <FieldDetailPanel packet={packet} />
             </div>
           </section>
+
+          {other === undefined ? null : (
+            <details className="layout-details">
+              <summary>
+                Difference from packet #{otherIndex + 1}
+              </summary>
+              <div className="diff">
+                <PacketDiffView
+                  left={other}
+                  leftIndex={otherIndex}
+                  right={packet}
+                  rightIndex={packetIndex}
+                />
+              </div>
+            </details>
+          )}
 
           <details className="layout-details">
             <summary>Packet layout — the wire format, field by field</summary>

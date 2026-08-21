@@ -9,6 +9,8 @@
 import type { Narration, Scenario } from '../scenario/types.ts'
 import { arpNarration } from './arp/narration.ts'
 import { arpScenario } from './arp/scenario.ts'
+import { arpSpoofingNarration } from './arp-spoofing/narration.ts'
+import { arpSpoofingScenario } from './arp-spoofing/scenario.ts'
 
 export type LessonMeta = {
   slug: string
@@ -32,6 +34,15 @@ export const LESSONS: readonly Lesson[] = [
     scenario: arpScenario,
     narration: arpNarration,
     filename: 'arp.pcap',
+  },
+  {
+    slug: 'arp-spoofing',
+    title: 'ARP spoofing: the cache is the vulnerability',
+    blurb:
+      'A reply nobody asked for, and a neighbour cache that believes it anyway. The same four packets a switch sees every day, one of which quietly redirects a host\'s traffic.',
+    scenario: arpSpoofingScenario,
+    narration: arpSpoofingNarration,
+    filename: 'arp-spoofing.pcap',
   },
 ]
 

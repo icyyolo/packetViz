@@ -410,6 +410,49 @@ below.
 > produces — two packets, empty `_ws.expert.severity`. **The Wireshark GUI check
 > in 3.11 is still outstanding and is yours to run**: nothing here can open a GUI.
 
+### Phase 3.6 — Lesson UI, unplanned (2026-08-21)
+
+Not in the original plan. Six user-requested additions, built after Phase 3 and
+before Phase 3.5, because a lesson that shows a packet but never shows what the
+packet *does* was teaching the wire format and nothing else.
+
+| # | What | Where | Verified by |
+|---|---|---|---|
+| 1 | Ladder labels ride their arrow instead of sitting at a fixed `x` (which was exactly the middle lifeline), with a `paint-order: stroke` halo | `views/FlowView.tsx` | Labels at x=270 for a 3-host segment; no lifeline overlap |
+| 2 | Generic, spec-derived packet layout table beside the concrete decode | `core/spec.ts` `specLayout`, `core/registry.ts` `frameLayout`, `views/LayoutView.tsx` | `tests/layout.test.ts` — every row's offset equals the decoded field's `byteStart` |
+| 3 | Neighbour cache per host, folded from the decodes as `f(t)` | `core/arp-cache.ts`, `views/ArpCacheView.tsx` | `tests/arp-cache.test.ts` (9 cases), `lesson-page.dom.test.tsx` |
+| 4 | Per-host delivery outcome on the ladder: NIC drop, ignored, learned, refreshed, overwritten, answered | `views/FlowView.tsx` | DOM test asserts "NIC drops it" and "entry overwritten" on packet 4 |
+| 5 | Field-level diff between the selected packet and its neighbour | `views/PacketDiffView.tsx` | DOM test on the spoof vs the honest reply |
+| 6 | Header bands + byte-range legend in the hex view | `views/HexView.tsx` | Existing hex tests still green; legend is non-interactive by design |
+| 7 | Second lesson: `#/lesson/arp-spoofing`, four packets | `lessons/arp-spoofing/` | Full tshark differential, plus criterion #7 grep |
+
+**Decisions worth recording:**
+
+- **The cache is core, not UI.** `foldArpCaches` implements RFC 826 packet
+  reception — the merge rule, the "only cache if you are the target" rule, and
+  the NIC filter — over decoded frames. No host state is read from a scenario.
+- **Every host receives every frame on the ladder now.** A shared segment
+  delivers to all; what separates broadcast from unicast is what each host
+  *does*, which is read out of `eth.dst` rather than from the scenario's `to`.
+- **The hex legend is not a control.** Three extra tab stops in front of the
+  byte grid would lengthen the keyboard path to the bytes for no new capability;
+  the same selection is one click away in the field tree.
+- **The spoofing lesson is a separate lesson, not four more packets in the ARP
+  one.** It needs its own hosts, its own narration arc and its own capture, and
+  the base lesson's two-packet story is what makes the request/reply diff legible.
+
+**A prose claim the oracle refuted.** The spoofing narration originally said
+Wireshark opens the capture "without a single expert warning". It does not:
+tshark raises `Duplicate IP address configured (10.0.0.2)` at severity
+`0x600000` on packet 4, because its ARP dissector keeps its own mapping across
+the capture. The narration now says so, and
+`tests/tshark-diff.test.ts` pins that exact expert-info row rather than
+asserting an empty list. Structural validity is now asserted as "no expert info
+reaches error severity" — a claim that survives a dissector with opinions.
+
+**Status: 119 tests green across 15 files, lint clean, build clean.** The
+Wireshark GUI check remains outstanding for both captures.
+
 ### Phase 3.5 — Live hex editing
 
 Built here, on the simplest protocol, because it is the fastest way to point the

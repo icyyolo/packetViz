@@ -16,6 +16,38 @@ import { fieldAtOffset, inSpan, spanOf, useSelection, type Span } from './select
 
 const BYTES_PER_ROW = 16
 
+/**
+ * Header boundaries are the thing a hex dump hides worst. Each top-level node of
+ * the decode — Ethernet, the payload protocol, the padding that belongs to
+ * neither — tints its own byte range, so the reader can see that ARP starts at
+ * byte 14 without clicking anything. The colours cycle through a small set and
+ * carry a legend, and they are a background wash only: selection still owns the
+ * outline and the underline, so nothing here depends on hue.
+ */
+type Section = {
+  id: string
+  name: string
+  byteStart: number
+  byteLength: number
+  index: number
+}
+
+function sectionsOf(packet: DecodedPacket): Section[] {
+  return packet.tree.map((node, index) => ({
+    id: node.id,
+    name: node.name,
+    byteStart: node.byteStart,
+    byteLength: node.byteLength,
+    index,
+  }))
+}
+
+function sectionAt(sections: readonly Section[], offset: number): Section | undefined {
+  return sections.find(
+    (section) => offset >= section.byteStart && offset < section.byteStart + section.byteLength,
+  )
+}
+
 export type HexViewProps = {
   packet: DecodedPacket
 }
@@ -25,6 +57,7 @@ export function HexView({ packet }: HexViewProps) {
   const frame = packet.frame
   const selected = spanOf(packet, selectedFieldId)
   const hovered = spanOf(packet, hoveredFieldId)
+  const sections = sectionsOf(packet)
 
   const [requestedFocus, setFocusOffset] = useState(0)
   const cells = useRef<(HTMLDivElement | null)[]>([])
@@ -98,6 +131,21 @@ export function HexView({ packet }: HexViewProps) {
 
   return (
     <div className="hex">
+      <ul className="hex-legend">
+        {sections.map((section) => (
+          <li key={section.id} className={`hex-legend-item is-sect-${section.index % 4}`}>
+            {/* Deliberately not a control: the same selection is one click away
+                in the field tree, and three extra tab stops in front of the hex
+                grid would make the keyboard path to the bytes longer for no
+                new capability. */}
+            <span className="hex-legend-name">{section.name}</span>
+            <span className="hex-legend-range">
+              {section.byteStart}–{section.byteStart + section.byteLength - 1}
+            </span>
+          </li>
+        ))}
+      </ul>
+
       <div className="hex-head">
         <span className="hex-offset" aria-hidden="true">
           offset
@@ -146,7 +194,7 @@ export function HexView({ packet }: HexViewProps) {
                     role="gridcell"
                     aria-colindex={column + 1}
                     tabIndex={offset === focusOffset ? 0 : -1}
-                    className={cellClass(offset, selected, hovered, packet.problems)}
+                    className={cellClass(offset, selected, hovered, packet.problems, sections)}
                     aria-label={describeByte(offset, byte)}
                     aria-selected={inSpan(selected, offset)}
                     onClick={() => {
@@ -192,8 +240,11 @@ function cellClass(
   selected: Span | null,
   hovered: Span | null,
   problems: readonly Problem[],
+  sections: readonly Section[],
 ): string {
   const classes = ['hex-cell']
+  const section = sectionAt(sections, offset)
+  if (section !== undefined) classes.push(`is-sect-${section.index % 4}`)
   if (inSpan(selected, offset)) classes.push('is-selected')
   if (inSpan(hovered, offset)) classes.push('is-hovered')
   for (const problem of problems) {

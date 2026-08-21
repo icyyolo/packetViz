@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { leafFields } from '../src/core/field.ts'
 import { LESSONS, findLesson } from '../src/lessons/index.ts'
@@ -92,8 +92,17 @@ describe('single-source-of-truth invariant', () => {
     /\bencodeEthernet\b/,
   ]
 
+  /** Every scenario file there is, found rather than listed, so a new lesson is covered on the day it lands. */
+  const scenarioFiles = readdirSync('src/lessons', { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => `src/lessons/${entry.name}/scenario.ts`)
+
+  it('finds every lesson scenario', () => {
+    expect(scenarioFiles.length).toBe(LESSONS.length)
+  })
+
   it('keeps every protocol fact out of src/lessons', () => {
-    for (const path of ['src/lessons/arp/scenario.ts', 'src/lessons/index.ts']) {
+    for (const path of [...scenarioFiles, 'src/lessons/index.ts']) {
       const code = stripComments(readFileSync(path, 'utf8'))
       for (const pattern of FORBIDDEN) {
         expect(pattern.test(code), `${path} contains protocol detail matching ${pattern}`).toBe(
@@ -114,8 +123,8 @@ describe('single-source-of-truth invariant', () => {
   it('forbids src/views from importing lesson content', () => {
     // Belt and braces: `.oxlintrc.json` enforces this too, but a lint config can
     // be edited away in a hurry and a failing test is harder to ignore.
-    const files = ['SelectionContext.tsx', 'selection.ts', 'HexView.tsx', 'FieldTreeView.tsx',
-      'FieldDetailPanel.tsx', 'FlowView.tsx', 'TopologyView.tsx']
+    const files = readdirSync('src/views')
+    expect(files.length).toBeGreaterThanOrEqual(8)
     for (const file of files) {
       const code = readFileSync(`src/views/${file}`, 'utf8')
       expect(code, `src/views/${file} imports lesson content`).not.toMatch(/from '.*lessons/)
