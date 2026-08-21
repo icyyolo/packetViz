@@ -16,6 +16,7 @@ import { compileScenario } from '../src/scenario/compile.ts'
 import { FieldDetailPanel } from '../src/views/FieldDetailPanel.tsx'
 import { FieldTreeView } from '../src/views/FieldTreeView.tsx'
 import { HexView } from '../src/views/HexView.tsx'
+import { LayoutView } from '../src/views/LayoutView.tsx'
 import { SelectionProvider } from '../src/views/SelectionContext.tsx'
 
 afterEach(cleanup)
@@ -158,5 +159,38 @@ describe('keyboard operation', () => {
     // is the contract the greyscale check in 3.13 relies on.
     expect(cell?.classList.contains('is-selected')).toBe(true)
     expect(document.querySelector('.tree-row.is-selected')).toBeTruthy()
+  })
+})
+
+describe('the generic layout table', () => {
+  function renderLayoutAndHex() {
+    return render(
+      <SelectionProvider packetCount={timeline.packets.length}>
+        <LayoutView packet={packet} />
+        <HexView packet={packet} />
+      </SelectionProvider>,
+    )
+  }
+
+  it('lists both headers with their real sizes', () => {
+    renderLayoutAndHex()
+    expect(screen.getByText(/Ethernet II — 14 bytes/)).toBeTruthy()
+    expect(screen.getByText(/ARP — 28 bytes/)).toBeTruthy()
+  })
+
+  it('selects the packet bytes when a layout row is clicked', async () => {
+    const user = userEvent.setup()
+    renderLayoutAndHex()
+
+    const table = document.querySelectorAll('.layout-table')[1] as HTMLElement
+    await user.click(within(table).getByRole('button', { name: 'Opcode' }))
+
+    expect(selectedOffsets()).toEqual([20, 21])
+  })
+
+  it('shows the value dictionary a packet cannot show on its own', () => {
+    renderLayoutAndHex()
+    // The request packet's opcode is 1; the table still documents 2 = Reply.
+    expect(screen.getByText('Reply')).toBeTruthy()
   })
 })

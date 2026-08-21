@@ -23,6 +23,13 @@ const WIDTH = 720
 const HEAD_HEIGHT = 44
 const PLOT_HEIGHT = 260
 const BOTTOM_PAD = 16
+const LABEL_LIFT = 8
+const LABEL_MARGIN = 6
+/** Approximate advance width of the 11px monospace label face. */
+const LABEL_CHAR_WIDTH = 6.4
+
+const clamp = (value: number, low: number, high: number): number =>
+  low > high ? (low + high) / 2 : Math.min(Math.max(value, low), high)
 
 export function FlowView({ timeline, tMs }: FlowViewProps) {
   const { packetIndex, selectPacket, selectField } = useSelection()
@@ -81,6 +88,22 @@ export function FlowView({ timeline, tMs }: FlowViewProps) {
         const sent = mark.sentMs <= tMs
         const isSelected = mark.packetIndex === packetIndex
 
+        // The label rides the arrow it describes rather than sitting at a fixed
+        // x, which used to drop it straight on top of the middle lifeline. It
+        // takes the midpoint of the first target's line, lifts clear of it, and
+        // is clamped so a long summary cannot run off the viewBox. Arrows that
+        // cross it are handled by the halo in `.flow-label` (paint-order:
+        // stroke), not by moving anything.
+        const label = packet?.summary ?? ''
+        const primary = targets[0]
+        const halfWidth = (label.length * LABEL_CHAR_WIDTH) / 2
+        const labelX = clamp(
+          (xOf(mark.from) + xOf(primary?.id ?? mark.from)) / 2,
+          halfWidth + LABEL_MARGIN,
+          WIDTH - halfWidth - LABEL_MARGIN,
+        )
+        const labelY = (yOf(mark.sentMs) + yOf(mark.arrivedMs)) / 2 - LABEL_LIFT
+
         return (
           <g
             key={mark.packetIndex}
@@ -111,12 +134,12 @@ export function FlowView({ timeline, tMs }: FlowViewProps) {
               />
             ))}
             <text
-              x={WIDTH / 2}
-              y={yOf(mark.sentMs) - 6}
+              x={labelX}
+              y={labelY}
               textAnchor="middle"
               className="flow-label"
             >
-              {packet?.summary ?? ''}
+              {label}
             </text>
           </g>
         )

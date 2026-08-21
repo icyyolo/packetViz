@@ -15,6 +15,7 @@ import { FieldDetailPanel } from '../views/FieldDetailPanel.tsx'
 import { FieldTreeView } from '../views/FieldTreeView.tsx'
 import { FlowView } from '../views/FlowView.tsx'
 import { HexView } from '../views/HexView.tsx'
+import { LayoutView } from '../views/LayoutView.tsx'
 import { TopologyView } from '../views/TopologyView.tsx'
 import { useSelection } from '../views/selection.ts'
 import { ExportPcapButton } from './ExportPcapButton.tsx'
@@ -115,6 +116,11 @@ export function LessonShell(props: LessonShellProps) {
               <FieldDetailPanel packet={packet} />
             </div>
           </section>
+
+          <details className="layout-details">
+            <summary>Packet layout — the wire format, field by field</summary>
+            <LayoutView packet={packet} />
+          </details>
         </>
       )}
     </article>

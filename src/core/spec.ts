@@ -128,3 +128,38 @@ export function enumRender(
     return `${formatNumber(ctx.num)} (${name ?? 'unknown'})`
   }
 }
+
+/** One row of a generic, packet-independent header layout. */
+export type SpecRow = {
+  spec: FieldSpec
+  /** Absolute byte offset of the first byte this field touches. */
+  byteStart: number
+  /** Bytes spanned, including a partially-shared first or last byte. */
+  byteLength: number
+  /** Bit position within `byteStart`, for sub-byte fields. */
+  bitOffset: number
+}
+
+/**
+ * Walk a spec table without a frame, producing the offsets a header WOULD have.
+ *
+ * This is what makes a generic layout table possible: the reference view and the
+ * decoded view read the same table, so they cannot disagree about where a field
+ * lives. `tests/layout.test.ts` asserts that for a real packet every
+ * `specLayout` row matches the decoded `FieldNode` of the same id.
+ */
+export function specLayout(specs: readonly FieldSpec[], byteBase = 0): SpecRow[] {
+  const rows: SpecRow[] = []
+  let bitCursor = byteBase * 8
+  for (const spec of specs) {
+    const byteStart = bitCursor >> 3
+    rows.push({
+      spec,
+      byteStart,
+      byteLength: Math.ceil((bitCursor + spec.bits) / 8) - byteStart,
+      bitOffset: bitCursor % 8,
+    })
+    bitCursor += spec.bits
+  }
+  return rows
+}

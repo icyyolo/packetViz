@@ -80,7 +80,9 @@ describe('deep links', () => {
     const user = userEvent.setup()
     renderAt('/lesson/arp')
 
-    await user.click(screen.getByText('Sender IP address'))
+    // Scoped to the field tree: the generic layout table names the same field.
+    const tree = document.querySelector('[role="tree"]') as HTMLElement
+    await user.click(within(tree).getByText('Sender IP address'))
     expect(document.querySelector('.hex-cell.is-selected')).toBeTruthy()
     expect(document.querySelectorAll('.hex-cell.is-selected')).toHaveLength(4)
   })

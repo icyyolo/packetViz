@@ -17,10 +17,11 @@
  * enforces all four clauses.
  */
 
-import type { DecodeResult, DecodedPacket, FieldNode, Problem } from './field.ts'
+import { findField, type DecodeResult, type DecodedPacket, type FieldNode, type Problem } from './field.ts'
 import { formatHexBytes, hex } from './format.ts'
-import { decodeArp } from './protocols/arp.ts'
-import { ETHER_TYPE, decodeEthernet, paddingNode } from './protocols/ethernet.ts'
+import { specBytes, specLayout, type FieldSpec, type SpecRow } from './spec.ts'
+import { ARP_SPECS, decodeArp } from './protocols/arp.ts'
+import { ETHERNET_SPECS, ETHER_TYPE, decodeEthernet, paddingNode } from './protocols/ethernet.ts'
 
 export type ProtocolDecoder = (frame: Uint8Array, offset: number) => DecodeResult
 
@@ -28,6 +29,8 @@ export type ProtocolEntry = {
   id: string
   name: string
   decode: ProtocolDecoder
+  /** The same table the decoder runs, exposed so reference UI can render the layout without a packet. */
+  specs: readonly FieldSpec[]
 }
 
 /**
@@ -36,7 +39,7 @@ export type ProtocolEntry = {
  * hand-maintained boolean.
  */
 export const BY_ETHER_TYPE: ReadonlyMap<number, ProtocolEntry> = new Map([
-  [ETHER_TYPE.ARP, { id: 'arp', name: 'ARP', decode: decodeArp }],
+  [ETHER_TYPE.ARP, { id: 'arp', name: 'ARP', decode: decodeArp, specs: ARP_SPECS }],
 ])
 
 export function decodeFrame(frame: Uint8Array): DecodedPacket {
@@ -92,4 +95,49 @@ function undecodedNode(frame: Uint8Array, offset: number): FieldNode {
     value: formatHexBytes(raw.subarray(0, 16)) + (raw.length > 16 ? ' ...' : ''),
     description: 'PacketViz has no decoder registered for this EtherType, so the payload is shown as raw bytes.',
   }
+}
+
+/** A protocol header's generic layout: what the wire format says, with no packet involved. */
+export type LayoutSection = {
+  id: string
+  name: string
+  rows: SpecRow[]
+  byteLength: number
+}
+
+/**
+ * The generic layout of the header stack this frame actually carries.
+ *
+ * Which protocols appear is decided by reading the EtherType back out of the
+ * frame's own bytes — never from a lesson file — so the reference table shown
+ * beside a packet always describes the packet in front of you. The rows
+ * themselves are packet-independent: same table, same offsets, whatever the
+ * values happen to be.
+ */
+export function frameLayout(packet: DecodedPacket): LayoutSection[] {
+  const sections: LayoutSection[] = [
+    {
+      id: 'eth',
+      name: 'Ethernet II',
+      rows: specLayout(ETHERNET_SPECS, 0),
+      byteLength: specBytes(ETHERNET_SPECS),
+    },
+  ]
+
+  const typeField = findField(packet.tree, 'eth.type')
+  const high = typeField?.raw[0]
+  const low = typeField?.raw[1]
+  if (high === undefined || low === undefined) return sections
+
+  const entry = BY_ETHER_TYPE.get((high << 8) | low)
+  if (entry === undefined) return sections
+
+  const base = specBytes(ETHERNET_SPECS)
+  sections.push({
+    id: entry.id,
+    name: entry.name,
+    rows: specLayout(entry.specs, base),
+    byteLength: specBytes(entry.specs),
+  })
+  return sections
 }

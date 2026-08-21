@@ -206,7 +206,18 @@ main {
 .flow-arrow.is-sent { opacity: 1; }
 .flow-arrow.is-selected { color: var(--accent); }
 .flow-arrow.is-selected line { stroke-width: 3; }
-.flow-label { fill: currentColor; font-size: 11px; font-family: var(--mono); }
+.flow-label {
+  fill: currentColor;
+  font-size: 11px;
+  font-family: var(--mono);
+  /* Halo: the glyphs are stroked with the panel colour underneath the fill, so
+     an arrow passing behind the label is punched out instead of running
+     through the text. */
+  paint-order: stroke;
+  stroke: var(--bg-sunken);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+}
 .flow-playhead line { stroke: var(--accent-2); stroke-width: 1; }
 .flow-playhead text { fill: var(--accent-2); font-size: 10px; font-family: var(--mono); }
 
@@ -388,3 +399,91 @@ main {
 .detail-raw { color: var(--text-dim); }
 .detail-description { color: var(--text); margin: 0 0 0.5rem; }
 .detail-reference { font-family: var(--mono); font-size: 0.75rem; color: var(--text-dim); margin: 0; }
+
+/* ---------- generic packet layout ---------- */
+
+.layout-details {
+  margin: 1rem 0 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg-raised);
+}
+.layout-details > summary {
+  cursor: pointer;
+  padding: 0.6rem 0.9rem;
+  color: var(--text-dim);
+  font-size: 0.9rem;
+}
+.layout-details[open] > summary {
+  border-bottom: 1px solid var(--line);
+  color: var(--text);
+}
+
+.layout { padding: 0.9rem; overflow-x: auto; }
+
+.layout-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 1.2rem;
+  font-size: 0.85rem;
+}
+.layout-table caption {
+  text-align: left;
+  font-family: var(--mono);
+  color: var(--accent);
+  padding-bottom: 0.4rem;
+}
+.layout-table th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--text-dim);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid var(--line);
+  padding: 0.3rem 0.6rem 0.3rem 0;
+}
+.layout-table td {
+  vertical-align: top;
+  padding: 0.45rem 0.6rem 0.45rem 0;
+  border-bottom: 1px solid var(--bg-sunken);
+}
+/* Selection carries a border and a bold field name as well as the accent tint,
+   so the highlighted row survives greyscale (Phase 3.13). */
+.layout-table tr.is-selected td { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.layout-table tr.is-selected td:first-child { box-shadow: inset 2px 0 0 var(--accent); }
+.layout-table tr.is-selected .layout-field { color: var(--accent); font-weight: 700; }
+
+.layout-offset, .layout-size { font-family: var(--mono); color: var(--text-dim); white-space: nowrap; }
+
+.layout-field {
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+  color: var(--text);
+  text-decoration: underline dotted var(--line);
+}
+.layout-field:hover { color: var(--accent-2); }
+.layout-id {
+  display: block;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--text-dim);
+}
+
+.layout-desc { margin: 0; color: var(--text-dim); max-width: 64ch; }
+.layout-values {
+  margin: 0.3rem 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem 0.8rem;
+  font-size: 0.78rem;
+  color: var(--text-dim);
+}
+.layout-values code { color: var(--accent); font-family: var(--mono); }
+.layout-ref { margin: 0.3rem 0 0; font-size: 0.75rem; color: var(--text-dim); font-family: var(--mono); }
+.layout-note { margin: 0; color: var(--text-dim); font-size: 0.78rem; max-width: 78ch; }
