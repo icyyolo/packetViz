@@ -97,7 +97,7 @@ computed by compiling the scenario and reading the decode, never typed by hand.
 ├── playwright.config.ts
 ├── docs/media/                    # generated screenshots + demo.gif
 ├── package.json
-├── vite.config.ts                 # base: '/packetviz/'
+├── vite.config.ts                 # base: '/packetViz/'  (must match repo name case)
 ├── tsconfig.json                  # strict: true
 ├── vitest.config.ts
 ├── .oxlintrc.json                 # holds the invariant rule (overrides block)
@@ -254,12 +254,12 @@ Every step below has a command to run and an expected result.
 
 | # | Step | Verify |
 |---|---|---|
-| 0.1 | `git init`; `PLAN.md` at repo root; create GitHub repo `packetviz` | `git log --oneline` shows initial commit |
-| 0.2 | `npm create vite@latest . -- --template react-ts`; set `strict: true`, `base: '/packetviz/'` | `npm run build` exits 0, `dist/` produced |
+| 0.1 | `git init`; `PLAN.md` at repo root; GitHub repo `icyyolo/packetViz` | `git log --oneline` shows initial commit |
+| 0.2 | `npm create vite@latest . -- --template react-ts`; set `strict: true`, `base: '/packetViz/'` (case must match the repo name or every asset 404s) | `npm run build` exits 0, `dist/` produced |
 | 0.3 | Add Vitest + fast-check; a trivial passing test | `npm test` → 1 passed |
 | 0.4 | `.oxlintrc.json` `overrides`: `no-restricted-imports` blocking `**/lessons/**` for `src/views/**` (oxlint ships with the Vite template and implements this ESLint rule) | Temporarily add such an import → `npm run lint` fails; remove it → passes |
 | 0.5 | `.github/workflows/ci.yml`: node 22, `npm ci`, lint, test. Install tshark non-interactively:<br>`echo "wireshark-common wireshark-common/install-setuid boolean false" \| sudo debconf-set-selections`<br>`sudo DEBIAN_FRONTEND=noninteractive apt-get install -y tshark` | Push → Actions run green; log shows a `tshark` version line |
-| 0.6 | `.github/workflows/deploy.yml` using `actions/upload-pages-artifact` + `actions/deploy-pages`; enable Pages (source: Actions) | `curl -sI https://<user>.github.io/packetviz/` → `HTTP/2 200` |
+| 0.6 | `.github/workflows/deploy.yml` using `actions/upload-pages-artifact` + `actions/deploy-pages`; enable Pages (source: Actions) | `curl -sI https://icyyolo.github.io/packetViz/` → `HTTP/2 200` |
 | 0.7 | Local: `sudo apt install tshark` | `tshark -v` prints version |
 
 **Phase 0 done when:** a placeholder page is live at the Pages URL and CI is green.
@@ -436,7 +436,7 @@ A lesson is done when **all eight** hold:
 
 ### For the project (the measurable outcome)
 
-- [ ] Live at `https://<user>.github.io/packetviz/`, CI green on `main`.
+- [ ] Live at `https://icyyolo.github.io/packetViz/`, CI green on `main`.
 - [ ] ARP and DHCP lessons both meet all eight lesson criteria.
 - [ ] The tshark mapping table covers **100% of leaf field ids** our decoder
       emits for both lessons, asserted by the coverage check — not a sampled
