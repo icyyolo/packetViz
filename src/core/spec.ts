@@ -93,6 +93,10 @@ export function runSpec(
       description: spec.description,
     }
     if (spec.reference !== undefined) node.reference = spec.reference
+    if (spec.values !== undefined && Number.isFinite(num)) {
+      const name = spec.values[num]
+      if (name !== undefined) node.valueName = name
+    }
     if (bitCursor % 8 !== 0 || spec.bits % 8 !== 0) {
       node.bitOffset = bitCursor % 8
       node.bitLength = spec.bits

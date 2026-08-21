@@ -360,6 +360,56 @@ agree field-for-field on generated ARP traffic.
 **Phase 3 done when:** the ARP lesson satisfies the lesson definition of done
 below.
 
+> **Status: complete (2026-08-21), 3.0 through 3.13.** Phase 3.5 (live hex
+> editing) is not started. 90 tests green across 13 files, lint clean, build
+> clean.
+>
+> Six deviations, all deliberate:
+>
+> 1. **Selection stores field ids, not byte spans.** 3.4 specified
+>    `{ packetIndex, selectedSpan }`; the implementation stores
+>    `{ packetIndex, selectedFieldId, hoveredFieldId }` and derives the span from
+>    the current decode via `spanOf()`. A stored span goes stale the moment the
+>    buffer is re-decoded, which is exactly what Phase 3.5 does on every
+>    keystroke, and it makes a deep link carry `?f=arp.opcode` instead of a pair
+>    of magic numbers.
+> 2. **The ARP frame builders moved into `core`.** `buildArpRequestFrame` and
+>    `buildArpReplyFrame` live in `src/core/protocols/arp.ts`. That a request is
+>    broadcast, that its target hardware address is all zeros, that the EtherType
+>    is ARP — all protocol facts, and leaving them in the scenario would have
+>    failed lesson criterion #7. The scenario now contains three host records,
+>    one link delay and two timestamps, and nothing else.
+> 3. **A third host.** 3.10 named Alice and Bob; Carol (10.0.0.3) was added.
+>    Broadcast is invisible with two hosts, and Carol receiving the request and
+>    dropping it is the point of the first narration step. She transmits nothing,
+>    so the capture is still two packets and byte-identical to Phase 2's.
+> 4. **`FieldNode` gained `valueName`.** 3.6b requires the panel to show "the
+>    matching entry from `values`"; the runner now copies that entry onto the
+>    node, so views never need to reach back into the spec tables.
+> 5. **jsdom + @testing-library added as devDependencies.** The plan defers all
+>    UI testing to Playwright in Phase 6, which would have left 3.5, 3.6, 3.12
+>    and 3.13 verified by "run the dev server and look". `tests/link.dom.test.tsx`
+>    and `tests/lesson-page.dom.test.tsx` check them mechanically instead. Phase
+>    6's exhaustive cross-lesson sweep still stands; this is a floor, not a
+>    replacement.
+> 6. **`views/selection.ts` split from `views/SelectionContext.tsx`.** oxlint's
+>    `react/only-export-components` warns when a file exports both a component
+>    and helpers. The provider is alone in the `.tsx`; the context, hook and pure
+>    helpers live in the `.ts`.
+>
+> Verified: the field-to-byte round trip is machine-checked over **every leaf
+> field** of the request packet, both directions, in `link.dom.test.tsx`;
+> keyboard navigation reaches byte 20 from byte 0 with `ArrowDown` then four
+> `ArrowRight` and selects `arp.opcode` with Enter; `#/lesson/arp?p=1&f=arp.opcode`
+> restores the packet, the field, the highlighted bytes and the scrubber (620 ms);
+> an unknown `f=` selects nothing rather than erroring; re-adding a
+> `src/views` to `src/lessons` import fails `npm run lint` with the INVARIANT
+> message.
+>
+> 3.11 was verified by running tshark over the exact bytes `ExportPcapButton`
+> produces — two packets, empty `_ws.expert.severity`. **The Wireshark GUI check
+> in 3.11 is still outstanding and is yours to run**: nothing here can open a GUI.
+
 ### Phase 3.5 — Live hex editing
 
 Built here, on the simplest protocol, because it is the fastest way to point the

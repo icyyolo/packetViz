@@ -9,7 +9,7 @@ import { ByteWriter } from '../bytes.ts'
 import type { DecodeResult, FieldNode } from '../field.ts'
 import { formatIpv4, formatMac, hex, parseIpv4, parseMac } from '../format.ts'
 import { enumRender, runSpec, specBytes, type FieldSpec } from '../spec.ts'
-import { ETHER_TYPE, ETHER_TYPE_NAMES } from './ethernet.ts'
+import { BROADCAST_MAC, ETHER_TYPE, ETHER_TYPE_NAMES, encodeEthernet } from './ethernet.ts'
 
 export const ARP_HW_TYPE_ETHERNET = 1
 export const ARP_HW_SIZE_ETHERNET = 6
@@ -173,4 +173,48 @@ function summarise(nodes: readonly FieldNode[]): string {
     if (code === ARP_OPCODE.REPLY) return `${senderIp} is at ${value('arp.src.hw_mac')}`
   }
   return `ARP ${senderIp} -> ${targetIp}`
+}
+
+/**
+ * Frame builders.
+ *
+ * These live in `core` rather than in a lesson because everything they encode is
+ * a protocol fact, not scene intent: that a request goes to the broadcast
+ * address, that its target hardware address is all zeros (it is precisely the
+ * unknown), that the EtherType is ARP, that a reply is unicast back to the
+ * asker. A lesson supplies only who the hosts are and when they speak.
+ */
+
+export type ArpEndpoint = { mac: string; ip: string }
+
+const UNKNOWN_MAC = '00:00:00:00:00:00'
+
+export function buildArpRequestFrame(sender: ArpEndpoint, targetIp: string): Uint8Array {
+  return encodeEthernet({
+    dst: BROADCAST_MAC,
+    src: sender.mac,
+    etherType: ETHER_TYPE.ARP,
+    payload: encodeArp({
+      opcode: ARP_OPCODE.REQUEST,
+      senderMac: sender.mac,
+      senderIp: sender.ip,
+      targetMac: UNKNOWN_MAC,
+      targetIp,
+    }),
+  })
+}
+
+export function buildArpReplyFrame(sender: ArpEndpoint, target: ArpEndpoint): Uint8Array {
+  return encodeEthernet({
+    dst: target.mac,
+    src: sender.mac,
+    etherType: ETHER_TYPE.ARP,
+    payload: encodeArp({
+      opcode: ARP_OPCODE.REPLY,
+      senderMac: sender.mac,
+      senderIp: sender.ip,
+      targetMac: target.mac,
+      targetIp: target.ip,
+    }),
+  })
 }

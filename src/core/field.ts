@@ -22,6 +22,8 @@ export type FieldNode = {
   description?: string
   /** e.g. "RFC 826 §2". */
   reference?: string
+  /** Dictionary entry for an enumerated field, e.g. "Request" for opcode 1. */
+  valueName?: string
   children?: FieldNode[]
 }
 
