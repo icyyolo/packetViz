@@ -22,6 +22,10 @@ import { walkFields, type DecodedPacket } from '../src/core/field.ts'
 import { decodeFrame } from '../src/core/registry.ts'
 import { ARP_OPCODE, encodeArp } from '../src/core/protocols/arp.ts'
 import { BROADCAST_MAC, ETHER_TYPE, encodeEthernet } from '../src/core/protocols/ethernet.ts'
+import { buildDhcpAckFrame } from '../src/core/protocols/dhcp.ts'
+import { ETH_HEADER_BYTES } from '../src/core/protocols/ethernet.ts'
+import { IPV4_HEADER_BYTES } from '../src/core/protocols/ipv4.ts'
+import { UDP_HEADER_BYTES } from '../src/core/protocols/udp.ts'
 
 const TIMEOUT_MS = 30_000
 const PER_CASE_BUDGET_MS = 100
@@ -38,6 +42,39 @@ const VALID_FRAME = encodeEthernet({
     targetIp: '10.0.0.2',
   }),
 })
+
+/**
+ * The other seed: a full Ethernet/IPv4/UDP/DHCP stack, which is where the
+ * untrusted numbers live — two header lengths, two total lengths and an option
+ * list walked one TLV at a time.
+ */
+const VALID_DHCP_FRAME = buildDhcpAckFrame(
+  { mac: '00:11:22:33:44:55' },
+  {
+    serverMac: 'aa:bb:cc:00:00:01',
+    serverIp: '10.0.0.1',
+    clientIp: '10.0.0.50',
+    subnetMask: '255.255.255.0',
+    router: '10.0.0.1',
+    dns: '10.0.0.1',
+    leaseSeconds: 86400,
+  },
+  0x3903f326,
+)
+
+/** Offsets into `VALID_DHCP_FRAME`, so the named cases below read as what they are. */
+const IP_AT = ETH_HEADER_BYTES
+const UDP_AT = IP_AT + IPV4_HEADER_BYTES
+const DHCP_AT = UDP_AT + UDP_HEADER_BYTES
+/** First option byte: the fixed BOOTP header is 240 bytes including the cookie. */
+const OPTIONS_AT = DHCP_AT + 240
+
+/** A copy of the DHCP frame with one or more bytes overwritten. */
+function withBytes(patch: Record<number, number>): Uint8Array {
+  const frame = Uint8Array.from(VALID_DHCP_FRAME)
+  for (const [offset, value] of Object.entries(patch)) frame[Number(offset)] = value
+  return frame
+}
 
 /** Runs the decoder and asserts all four clauses. Returns nothing; it throws on violation. */
 function checkContract(frame: Uint8Array): void {
@@ -126,6 +163,85 @@ describe('decoder totality contract', () => {
     },
     TIMEOUT_MS,
   )
+
+  it(
+    'survives the DHCP stack truncated at every offset',
+    () => {
+      fc.assert(
+        fc.property(fc.integer({ min: 0, max: VALID_DHCP_FRAME.length }), (length) => {
+          checkContract(VALID_DHCP_FRAME.subarray(0, length))
+        }),
+        { numRuns: 1500 },
+      )
+    },
+    TIMEOUT_MS,
+  )
+
+  it(
+    'survives the DHCP stack with one byte mutated',
+    () => {
+      fc.assert(
+        fc.property(
+          fc.integer({ min: 0, max: VALID_DHCP_FRAME.length - 1 }),
+          fc.integer({ min: 0, max: 255 }),
+          (index, value) => {
+            checkContract(withBytes({ [index]: value }))
+          },
+        ),
+        { numRuns: 2000 },
+      )
+    },
+    TIMEOUT_MS,
+  )
+
+  /**
+   * Random mutation finds these eventually; naming them means a regression is
+   * reported as the case it is rather than as a shrunk byte index. Each one is a
+   * length field lying about something the decoder would otherwise trust.
+   */
+  describe('the named adversarial cases', () => {
+    it('a DHCP option that declares zero length does not spin', () => {
+      // Option code 100, length 0, in place of the first real option.
+      checkContract(withBytes({ [OPTIONS_AT]: 100, [OPTIONS_AT + 1]: 0 }))
+    })
+
+    it('a DHCP option whose length runs past the buffer stops at the buffer', () => {
+      const frame = withBytes({ [OPTIONS_AT + 1]: 0xff })
+      checkContract(frame)
+      const problems = decodeFrame(frame).problems
+      expect(problems.some((problem) => problem.message.includes('of value but only'))).toBe(true)
+    })
+
+    it('an option list with no terminator ends with the bytes', () => {
+      const frame = Uint8Array.from(VALID_DHCP_FRAME)
+      frame[frame.length - 1] = 0x01 // was the End option
+      checkContract(frame)
+    })
+
+    it('an IPv4 header length below the minimum is refused', () => {
+      checkContract(withBytes({ [IP_AT]: 0x41 })) // version 4, IHL 1
+    })
+
+    it('an IPv4 header length longer than the frame is clamped', () => {
+      checkContract(withBytes({ [IP_AT]: 0x4f })) // IHL 15 = 60 bytes of header
+    })
+
+    it('an IPv4 total length larger than the frame is refused', () => {
+      checkContract(withBytes({ [IP_AT + 2]: 0xff, [IP_AT + 3]: 0xff }))
+    })
+
+    it('a UDP length larger than the frame is refused', () => {
+      checkContract(withBytes({ [UDP_AT + 4]: 0xff, [UDP_AT + 5]: 0xff }))
+    })
+
+    it('a UDP length shorter than its own header is refused', () => {
+      checkContract(withBytes({ [UDP_AT + 4]: 0x00, [UDP_AT + 5]: 0x01 }))
+    })
+
+    it('a DHCP message with no magic cookie is not read as options', () => {
+      checkContract(withBytes({ [DHCP_AT + 236]: 0x00 }))
+    })
+  })
 
   it('survives the empty frame and a single byte', () => {
     checkContract(new Uint8Array(0))

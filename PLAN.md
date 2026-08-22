@@ -518,6 +518,48 @@ README claim into something an interviewer can falsify in five seconds.
 | 4.7 | Extend the tshark mapping table to IPv4/UDP/DHCP; coverage assertion still holds | `npm test` green; corrupt the UDP checksum → expert-info assertion fails |
 | 4.8 | Extend the fuzz test to the full stack. Targeted adversarial cases beyond random bytes: DHCP option with length `0`; option length running past the buffer; IPv4 IHL `< 5` and `> remaining`; UDP length field larger than the frame; option list with no `255` terminator | 5000 fuzz cases plus the named cases → no throw, no hang, each produces a `Problem` with correct byte span. The zero-length-option case specifically must not spin |
 
+> **Status: complete (2026-08-22), 4.1 through 4.8.** 195 tests green across 20
+> files, lint clean, build clean. tshark now compares 144 field values plus 22
+> DHCP options across a generated DORA exchange, with IPv4 and UDP checksum
+> validation switched on.
+>
+> Six things worth recording:
+>
+> 1. **Dispatch became a chain.** Ethernet -> IPv4 -> UDP -> DHCP needs three
+>    lookups, so `registry.ts` now walks a `Dispatch` descriptor — table, key,
+>    payload offset, payload length, plus the context UDP needs. Each layer says
+>    where its payload is; the registry never hard-codes the stack.
+> 2. **The payload length in that descriptor caught a real bug.** Before it, an
+>    undecodable payload claimed everything to the end of the frame, which meant
+>    Ethernet padding was silently absorbed into it. Payload extent now comes
+>    from the enclosing header's own length field, so padding stays padding.
+>    `tests/ipv4.test.ts` pins it.
+> 3. **UDP's decoder takes a context argument**, because its checksum covers a
+>    pseudo-header of the IPv4 addresses it cannot see. Decoded standalone it
+>    says `[unverified: no IP header]` rather than pretending.
+> 4. **Both checksums are verified on decode**, which the plan did not ask for.
+>    Phase 3.5 made the hex grid writable, and a checksum that is not checked is
+>    a field a visitor can edit with no visible consequence. A mismatch is a
+>    warning naming the value the header should have carried.
+> 5. **The oracle needed configuring, and disagreed in three places.** Wireshark
+>    ships with IPv4 and UDP checksum validation OFF, so the differential passes
+>    `-o ip.check_checksum:TRUE -o udp.check_checksum:TRUE` and asserts status 1
+>    (Good) rather than 2 (unchecked). The mapping table grew two knobs: `scale`
+>    (tshark reports `ip.hdr_len` in bytes and `ip.frag_offset` in bytes, both
+>    scaled from the wire units) and `containingByte` (tshark's `ip.flags` is the
+>    whole byte including the fragment-offset bits — confirmed with a crafted
+>    0x5f frame, not assumed). The JSON flattener became recursive to reach
+>    `ip.dsfield.dscp`, which lives inside `ip.dsfield_tree`.
+> 6. **tshark reports the DHCP End option's `dhcp.option.type` as 0**, while its
+>    own detail tree prints "Option: (255) End". The option-code sequence check
+>    drops the terminator and verifies it through `dhcp.option.end` instead, with
+>    the quirk pinned so a future Wireshark that fixes it fails loudly.
+>
+> One step landed early: the DHCP frame builders (`buildDhcpDiscoverFrame` and
+> friends) are in `core/protocols/dhcp.ts` now rather than in Phase 5, because
+> the differential needed real DORA frames to compare. Phase 5 is therefore a
+> scenario file, narration, and whatever the lesson UI needs.
+
 ### Phase 5 — DHCP lesson
 
 | # | Step | Verify |
