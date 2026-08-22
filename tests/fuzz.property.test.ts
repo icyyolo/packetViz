@@ -139,7 +139,7 @@ describe('decoder totality contract', () => {
         fc.property(fc.integer({ min: 0, max: VALID_FRAME.length }), (length) => {
           checkContract(VALID_FRAME.subarray(0, length))
         }),
-        { numRuns: 1500 },
+        { numRuns: 2500 },
       )
     },
     TIMEOUT_MS,
@@ -158,7 +158,7 @@ describe('decoder totality contract', () => {
             checkContract(mutated)
           },
         ),
-        { numRuns: 1500 },
+        { numRuns: 2500 },
       )
     },
     TIMEOUT_MS,
@@ -171,7 +171,9 @@ describe('decoder totality contract', () => {
         fc.property(fc.integer({ min: 0, max: VALID_DHCP_FRAME.length }), (length) => {
           checkContract(VALID_DHCP_FRAME.subarray(0, length))
         }),
-        { numRuns: 1500 },
+        // Enough that the DHCP stack, like the ARP one, clears 5,000 generated
+        // cases on its own rather than borrowing the arbitrary-bytes run.
+        { numRuns: 3000 },
       )
     },
     TIMEOUT_MS,
@@ -188,7 +190,7 @@ describe('decoder totality contract', () => {
             checkContract(withBytes({ [index]: value }))
           },
         ),
-        { numRuns: 2000 },
+        { numRuns: 2500 },
       )
     },
     TIMEOUT_MS,

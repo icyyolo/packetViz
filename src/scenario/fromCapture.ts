@@ -83,13 +83,13 @@ function hostsOf(packets: readonly DecodedPacket[]): Host[] {
     if (mac === undefined || isGroupAddress(mac)) return
     const existing = hosts.get(mac)
     if (existing === undefined) {
-      hosts.set(mac, { id: mac, label: ip ?? mac, mac, ip: ip ?? '' })
+      // The label carries the identity and `ip` stays empty: the views print
+      // both, and a host labelled "10.0.0.1" over the annotation "10.0.0.1" is
+      // just noise. A lesson fills in both because it has two things to say.
+      hosts.set(mac, { id: mac, label: ip ?? mac, mac, ip: '' })
       return
     }
-    if (ip !== undefined && ip !== '0.0.0.0') {
-      existing.ip = ip
-      existing.label = ip
-    }
+    if (ip !== undefined && ip !== '0.0.0.0') existing.label = ip
   }
 
   for (const packet of packets) {

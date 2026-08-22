@@ -742,3 +742,122 @@ main {
   grid-template-columns: 3.5rem 1fr auto;
   width: 100%;
 }
+
+/* ---- Concept map (Phase 8) ---------------------------------------------- */
+
+.map { margin: 1.5rem 0 2rem; }
+.map-head h2 { margin-bottom: 0.3rem; }
+.map-note { color: var(--text-dim); font-size: 0.9rem; margin: 0 0 0.9rem; max-width: 60ch; }
+
+/* Boxes inside boxes, because that is what encapsulation is. */
+.map-block {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.45rem;
+  background: var(--bg-raised);
+}
+.map-block.is-todo { border-style: dashed; background: transparent; }
+.map-block.is-selected { border-color: var(--accent); }
+.map-children { display: grid; gap: 0.45rem; margin-top: 0.45rem; }
+
+.map-label {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.3rem 0.5rem;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.map-label:hover:not(:disabled) { background: color-mix(in srgb, var(--accent-2) 14%, transparent); }
+.map-label:disabled { color: var(--text-dim); cursor: default; }
+.map-block.is-selected > .map-label { text-decoration: underline; color: var(--accent); }
+.map-name { font-weight: 600; }
+.map-layer { font-family: var(--mono); font-size: 0.75rem; color: var(--text-dim); }
+.map-todo {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+  border: 1px dashed var(--line);
+  border-radius: 4px;
+  padding: 0 0.3rem;
+}
+.map-clear {
+  margin-top: 0.6rem;
+  padding: 0.25rem 0.6rem;
+  font: inherit;
+  font-size: 0.8rem;
+  background: var(--bg-raised);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+/* Filtering dims rather than hides: what a protocol is NOT used by is also an
+   answer, and cards that vanish make the grid jump. */
+.card.is-dimmed { opacity: 0.42; }
+.badge.is-selected { background: color-mix(in srgb, var(--accent) 20%, transparent); }
+
+/* ---- Header diagram ------------------------------------------------------ */
+
+.diagram { margin: 0.5rem 0 1.2rem; }
+.diagram-ruler { display: flex; font-family: var(--mono); font-size: 0.7rem; color: var(--text-dim); }
+.diagram-tick { flex: 8 1 0; }
+.diagram-row { display: flex; gap: 2px; margin-bottom: 2px; }
+.diagram-cell {
+  flex-basis: 0;
+  min-width: 0;
+  overflow: hidden;
+  display: grid;
+  gap: 0.1rem;
+  padding: 0.3rem 0.2rem;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--bg-raised);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.75rem;
+  text-align: center;
+  cursor: pointer;
+}
+.diagram-cell:hover { border-color: var(--accent-2); }
+.diagram-cell.is-highlighted { border-color: var(--accent); text-decoration: underline; }
+.diagram-cell.is-elided { background: var(--bg-sunken); border-style: dashed; }
+.diagram-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.diagram-bits { font-family: var(--mono); font-size: 0.65rem; color: var(--text-dim); }
+
+/* ---- Reference page ------------------------------------------------------ */
+
+.reference { max-width: 68rem; margin: 0 auto; padding: 1.2rem 1rem 3rem; }
+.reference h2 { margin-top: 1.6rem; }
+.reference-meta { font-family: var(--mono); font-size: 0.8rem; color: var(--text-dim); }
+.reference-scroll { overflow-x: auto; }
+.reference-table { width: 100%; min-width: 40rem; border-collapse: collapse; font-size: 0.9rem; }
+.reference-table th, .reference-table td {
+  border-top: 1px solid var(--line);
+  padding: 0.5rem 0.6rem;
+  text-align: left;
+  vertical-align: top;
+}
+.reference-table th { color: var(--text-dim); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; }
+.reference-table tr.is-focused { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.reference-table .mono { font-family: var(--mono); white-space: nowrap; }
+.reference-name { display: block; font-weight: 600; }
+.reference-id { font-family: var(--mono); font-size: 0.75rem; color: var(--text-dim); }
+.reference-rfc { color: var(--text-dim); }
+.reference-nolink { color: var(--text-dim); font-size: 0.8rem; }
+.reference-values, .reference-dictionary { list-style: none; padding: 0; margin: 0.4rem 0 0; font-size: 0.85rem; }
+.reference-dictionary { columns: 16rem; }
+.reference-values code, .reference-dictionary code {
+  font-family: var(--mono);
+  color: var(--accent);
+  margin-right: 0.4rem;
+}
+.detail-reference-link { font-size: 0.85rem; margin: 0.4rem 0 0; }

@@ -10,6 +10,7 @@
 import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it } from 'vitest'
+import { MemoryRouter } from 'react-router-dom'
 import { leafFields } from '../src/core/field.ts'
 import { arpScenario } from '../src/lessons/arp/scenario.ts'
 import { compileScenario } from '../src/scenario/compile.ts'
@@ -25,12 +26,16 @@ const timeline = compileScenario(arpScenario)
 const packet = timeline.packets[0]!
 
 function renderLinkedViews() {
+  // The detail panel links a field to its row on the generated reference page,
+  // so these views now need a router around them — as they always have in the app.
   return render(
-    <SelectionProvider packetCount={timeline.packets.length}>
-      <FieldTreeView packet={packet} />
-      <HexView packet={packet} />
-      <FieldDetailPanel packet={packet} />
-    </SelectionProvider>,
+    <MemoryRouter>
+      <SelectionProvider packetCount={timeline.packets.length}>
+        <FieldTreeView packet={packet} />
+        <HexView packet={packet} />
+        <FieldDetailPanel packet={packet} />
+      </SelectionProvider>
+    </MemoryRouter>,
   )
 }
 

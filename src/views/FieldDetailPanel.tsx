@@ -10,8 +10,10 @@
  * tooltip, so it works for keyboard and screen-reader users too.
  */
 
+import { Link } from 'react-router-dom'
 import type { DecodedPacket } from '../core/field.ts'
 import { formatHexBytes } from '../core/format.ts'
+import { findProtocol } from '../core/registry.ts'
 import { nodeOf, useSelection } from './selection.ts'
 
 export type FieldDetailPanelProps = {
@@ -85,8 +87,31 @@ export function FieldDetailPanel({ packet }: FieldDetailPanelProps) {
           {node.reference !== undefined ? (
             <p className="detail-reference">{node.reference}</p>
           ) : null}
+
+          {/* The wire format behind this one packet. The protocol is the field
+              id's own prefix, so nothing here needs a table of its own. */}
+          {referenceLink(node.id)}
         </>
       )}
     </aside>
+  )
+}
+
+/**
+ * A link to the field's row on the generated reference page, when the field
+ * belongs to a protocol that has one. Option fields (`dhcp.opt.53.value`) land
+ * on the DHCP page, which carries the option dictionary they come from.
+ */
+function referenceLink(fieldId: string) {
+  const protocolId = fieldId.split('.')[0] ?? ''
+  const protocol = findProtocol(protocolId)
+  if (protocol === undefined || !protocol.implemented) return null
+
+  return (
+    <p className="detail-reference-link">
+      <Link to={`/reference/${protocol.id}?f=${fieldId}`}>
+        {protocol.name} header reference
+      </Link>
+    </p>
   )
 }

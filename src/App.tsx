@@ -2,6 +2,7 @@ import { HashRouter, Link, NavLink, Route, Routes } from 'react-router-dom'
 import { HomePage } from './pages/HomePage.tsx'
 import { ImportPage } from './pages/ImportPage.tsx'
 import { LessonPage } from './pages/LessonPage.tsx'
+import { ReferenceIndexPage, ReferencePage } from './pages/ReferencePage.tsx'
 
 export function App() {
   return (
@@ -17,6 +18,7 @@ export function App() {
           Lessons
         </NavLink>
         <NavLink to="/import">Import</NavLink>
+        <NavLink to="/reference">Reference</NavLink>
       </nav>
 
       <main id="main">
@@ -24,6 +26,8 @@ export function App() {
           <Route path="/" element={<HomePage />} />
           <Route path="/lesson/:slug" element={<LessonPage />} />
           <Route path="/import" element={<ImportPage />} />
+          <Route path="/reference" element={<ReferenceIndexPage />} />
+          <Route path="/reference/:protocol" element={<ReferencePage />} />
           <Route
             path="*"
             element={

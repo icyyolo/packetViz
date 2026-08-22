@@ -21,8 +21,12 @@ jobs:
           echo "wireshark-common wireshark-common/install-setuid boolean false" \
             | sudo debconf-set-selections
           sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq tshark
+          # wireshark-common is named explicitly for text2pcap and editcap, which
+          # the foreign-capture import test needs; tshark depends on it, but a
+          # dependency that happens to be there is not the same as one we asked for.
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq tshark wireshark-common
           tshark -v | head -1
+          text2pcap -v | head -1
 
       - run: npm ci
 

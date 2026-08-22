@@ -722,6 +722,46 @@ registry with real entries or it would be built twice.
 | 8.9 | README: live link and demo GIF at the top, the correctness proof and how to run it, plus an **"Adding a lesson / adding a protocol"** section written from what actually happened building DHCP | A reader can reproduce the correctness proof and add a third lesson from the README alone |
 | 8.10 | CI badge + live Pages link + `docs/media` embedded | Badge green on `main`; GIF renders on the GitHub repo page |
 
+> **Status: complete (2026-08-22), 8.1 through 8.10.** 251 unit tests across 25
+> files and 30 end-to-end tests, lint and build clean. The home page carries the
+> concept map, `#/reference/:protocol` exists for all five protocols, and
+> `README.md` and `ARCHITECTURE.md` are written.
+>
+> Five things worth recording:
+>
+> 1. **"Implemented" is reachability, not a flag.** A protocol counts as
+>    implemented exactly when it is registered in a dispatch table — that is, when
+>    `decodeFrame` can actually get to it. `tests/registry.test.ts` deletes DHCP
+>    from `BY_UDP_PORT`, asserts the description flips to unimplemented with its
+>    spec table emptied, and restores it. That is plan step 8.2's delete-and-
+>    restore check run as a test rather than by hand.
+> 2. **The concept map is nested elements, not SVG — a deliberate departure.**
+>    Real buttons are keyboard-reachable and screen-reader-legible for free, text
+>    wraps instead of overflowing, and the whole thing reflows on a 390px
+>    viewport (asserted). An SVG drawing would have needed all three
+>    re-implemented by hand for no gain the picture actually needs.
+> 3. **The reference page is generated, and there is a test that proves it.**
+>    `tests/reference.dom.test.tsx` pushes an invented field onto `IPV4_SPECS`,
+>    re-renders, and finds a new table row, a new description and a new box in
+>    the header diagram — with no edit to any page code — then pops it off again.
+> 4. **The DHCP option codes needed a route that is not a `FieldSpec`.** Options
+>    are read by the hand-written TLV loop, so the reference page had no spec to
+>    generate them from and would have silently documented half the protocol. The
+>    catalog entry now carries the same `DHCP_OPTION_NAMES` and
+>    `DHCP_MESSAGE_TYPE_NAMES` maps the decoder uses — a second route, not a
+>    second copy.
+> 5. **Diagram elision has a precondition, and it fires.** A field wider than two
+>    rows is drawn as one labelled block instead of dozens of identical rows —
+>    but only when it starts on a 32-bit boundary. DHCP's `chaddr` padding is
+>    wide enough to elide and does *not* start on one (the client MAC ends
+>    mid-row), so it wraps normally instead. The test pins both branches.
+>
+> The detail panel now links each field to its row on the generated reference
+> page, which is the path from "what is this byte" to "what is this field, in
+> general" — and it is the one change that made `tests/link.dom.test.tsx` need a
+> router around the views.
+
+
 ### Phase 9 — Backlog (documented, not committed)
 
 No code. A README section listing candidates so future-you doesn't relearn the
@@ -767,30 +807,34 @@ A lesson is done when **all eight** hold:
 ### For the project (the measurable outcome)
 
 - [ ] Live at `https://icyyolo.github.io/packetViz/`, CI green on `main`.
-- [ ] ARP and DHCP lessons both meet all eight lesson criteria.
-- [ ] The tshark mapping table covers **100% of leaf field ids** our decoder
+      *(Waiting on a push, and on GitHub Settings -> Pages -> Source = "GitHub
+      Actions".)*
+- [x] ARP and DHCP lessons both meet all eight lesson criteria.
+- [x] The tshark mapping table covers **100% of leaf field ids** our decoder
       emits for both lessons, asserted by the coverage check — not a sampled
       subset.
 - [ ] Both exported `.pcap` files open in the Wireshark GUI with zero malformed
-      packets and zero checksum errors.
-- [ ] A `.pcap` produced elsewhere (not by this project) containing ARP or DHCP
+      packets and zero checksum errors. *(`tshark` asserts exactly this on every
+      commit; opening the three files in the GUI is the one check a human still
+      has to do.)*
+- [x] A `.pcap` produced elsewhere (not by this project) containing ARP or DHCP
       can be imported and viewed in the same four-layer viewer.
-- [ ] Round-trip property tests pass at 1000+ generated cases for the full
+- [x] Round-trip property tests pass at 1000+ generated cases for the full
       Ethernet / IPv4 / UDP / DHCP stack.
-- [ ] Home page shows the concept map and both lesson cards; every lesson is
+- [x] Home page shows the concept map and both lesson cards; every lesson is
       reachable by a shareable deep link (`#/lesson/arp`, `#/lesson/dhcp`), and
       the map's implemented/not-implemented state is derived from the registry —
       proven by the 8.2 delete-and-restore check.
-- [ ] README contains an "Adding a lesson / adding a protocol" section accurate
+- [x] README contains an "Adding a lesson / adding a protocol" section accurate
       enough to follow without reading the source, and `ARCHITECTURE.md` states
       the invariant and the codec split.
-- [ ] Fuzz test passes 5,000+ cases per protocol with zero throws and zero
+- [x] Fuzz test passes 5,000+ cases per protocol with zero throws and zero
       timeouts, and removing any single bounds check makes it fail.
-- [ ] Editing a byte in layer 4 re-decodes and updates all four layers live;
+- [x] Editing a byte in layer 4 re-decodes and updates all four layers live;
       the ARP opcode flip is covered by an E2E test.
-- [ ] A 20,000-packet pcap imports without hanging, showing the first 5,000 with
+- [x] A 20,000-packet pcap imports without hanging, showing the first 5,000 with
       a clear notice.
-- [ ] `#/reference/:protocol` exists for every implemented protocol, is generated
+- [x] `#/reference/:protocol` exists for every implemented protocol, is generated
       entirely from the `FieldSpec` tables (adding a field to a spec changes the
       page with no edit to page code), and every field has a description and a
       working "see it live" deep link.

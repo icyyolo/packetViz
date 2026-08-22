@@ -15,6 +15,22 @@ import { execFileSync } from 'node:child_process'
 import { mkdirSync, rmSync, readdirSync, renameSync } from 'node:fs'
 import { join } from 'node:path'
 import { chromium, type Page } from '@playwright/test'
+import { writePcap } from '../src/core/pcap/write.ts'
+import { findLesson } from '../src/lessons/index.ts'
+import { compileScenario } from '../src/scenario/compile.ts'
+
+/** A lesson's capture, exactly as its export button writes it. */
+function lessonCapture(slug: string): Uint8Array {
+  const lesson = findLesson(slug)
+  if (lesson === undefined) throw new Error(`no lesson ${slug}`)
+  const timeline = compileScenario(lesson.scenario)
+  return writePcap(
+    timeline.packets.map((packet, index) => ({
+      frame: packet.frame,
+      tMs: timeline.marks[index]?.sentMs ?? 0,
+    })),
+  )
+}
 
 const PORT = 4180
 const BASE = `http://127.0.0.1:${PORT}/packetViz/`
@@ -52,6 +68,10 @@ async function captureStills(browser: Awaited<ReturnType<typeof chromium.launch>
   await open(page, '#/')
   await shoot(page, 'home.png')
 
+  // The concept map, whose greyed blocks are derived from the registry rather
+  // than drawn by hand — worth its own shot for exactly that reason.
+  await shoot(page, 'concept-map.png', '.map')
+
   // The four layers of the ARP lesson, at a fixed point on the timeline.
   await open(page, '#/lesson/arp')
   await seek(page, 620)
@@ -65,6 +85,21 @@ async function captureStills(browser: Awaited<ReturnType<typeof chromium.launch>
   await open(page, '#/lesson/dhcp')
   await page.locator('.packet-tab').nth(3).click()
   await shoot(page, 'dhcp-stack.png', '.panes')
+
+  // A capture this project did not write, read in the same four layers.
+  await open(page, '#/import')
+  await page.locator('input[type="file"]').setInputFiles({
+    name: 'dhcp.pcap',
+    mimeType: 'application/vnd.tcpdump.pcap',
+    buffer: Buffer.from(lessonCapture('dhcp')),
+  })
+  await page.locator('.packet-tab').nth(1).click()
+  await shoot(page, 'import.png')
+
+  // The generated reference: a header diagram and a field table, both read out
+  // of the same spec array the decoder runs.
+  await open(page, '#/reference/ip')
+  await shoot(page, 'reference.png')
 
   // A poisoned neighbour cache, which is the spoofing lesson's whole point.
   await open(page, '#/lesson/arp-spoofing')

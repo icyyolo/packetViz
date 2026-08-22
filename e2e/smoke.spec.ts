@@ -17,7 +17,62 @@ test('the home page lists every lesson, plus the import and reference cards', as
     await expect(page.getByRole('link', { name: lesson.title })).toBeVisible()
   }
   await expect(page.getByRole('link', { name: /Open your own/i })).toBeVisible()
+  await expect(page.getByRole('link', { name: /Protocol reference/i })).toBeVisible()
 })
+
+/**
+ * The map's claim is that "implemented" is derived from the registry. In the
+ * browser that shows up as which blocks can be pressed at all.
+ */
+test('the concept map filters the lessons, and names what is not implemented', async ({ page }) => {
+  await page.goto('#/')
+
+  await expect(page.getByRole('button', { name: /^TCP/ })).toBeDisabled()
+  await page.getByRole('button', { name: /^ARP/ }).click()
+
+  const lit = page.locator('.cards .card:not(.card-secondary):not(.is-dimmed)')
+  await expect(lit).toHaveCount(2)
+  await lit.first().click()
+  await expect(page).toHaveURL(/#\/lesson\/arp/)
+})
+
+for (const protocol of ['eth', 'arp', 'ip', 'udp', 'dhcp']) {
+  test(`the ${protocol} reference page renders a diagram and a field table`, async ({ page }) => {
+    await page.goto(`#/reference/${protocol}`)
+
+    await expect(page.getByRole('img', { name: /Header layout/ })).toBeVisible()
+    await expect(page.locator('.reference-table tbody tr').first()).toBeVisible()
+    // Every row explains its field: the spec table is the only source of prose.
+    const rows = await page.locator('.reference-table tbody tr').count()
+    expect(rows).toBeGreaterThan(2)
+  })
+}
+
+/**
+ * Plan step 8.6: the panel's link is the path from "what is this byte" to "what
+ * is this field, in general".
+ */
+test('a lesson field links to its row on the reference page', async ({ page }) => {
+  await page.goto('#/lesson/dhcp')
+  await page.getByRole('treeitem', { name: /Time to live/ }).first().click()
+  await page.getByRole('link', { name: /IPv4 header reference/ }).click()
+
+  await expect(page).toHaveURL(/#\/reference\/ip\?f=ip\.ttl/)
+  await expect(page.locator('tr.is-focused')).toContainText('ip.ttl')
+})
+
+for (const width of [1280, 390]) {
+  test(`the home page has no horizontal scroll at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 })
+    await page.goto('#/')
+    await expect(page.locator('.map-block').first()).toBeVisible()
+
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    )
+    expect(overflow).toBeLessThanOrEqual(0)
+  })
+}
 
 for (const lesson of LESSONS) {
   test(`the ${lesson.slug} lesson loads from its own URL`, async ({ page }) => {
