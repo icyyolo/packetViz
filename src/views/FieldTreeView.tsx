@@ -113,6 +113,9 @@ export function FieldTreeView({ packet }: FieldTreeViewProps) {
       onKeyDown={onKeyDown}
       onMouseLeave={() => hoverField(null)}
     >
+      {/* `data-field-id` is a stable handle for the Phase 6 end-to-end sweep:
+          field NAMES repeat inside a DHCP option list ("Option code", "Length",
+          "Value"), so a test cannot address a row by its text. */}
       {rows.map((row, index) => {
         const isSelected = row.node.id === selectedFieldId
         const isHovered = row.node.id === hoveredFieldId
@@ -124,6 +127,7 @@ export function FieldTreeView({ packet }: FieldTreeViewProps) {
               if (index === focusIndex) applyFocus(index)
             }}
             role="treeitem"
+            data-field-id={row.node.id}
             aria-level={row.level + 1}
             aria-selected={isSelected}
             aria-expanded={row.hasChildren ? row.expanded : undefined}

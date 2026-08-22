@@ -605,6 +605,45 @@ Runs after both lessons exist so the tests iterate real content, not fixtures.
 | 6.3 | `scripts/capture-media.ts`: drives Playwright to write `docs/media/*.png` (four layers, a field↔byte click, the concept map) and one `demo.gif` of a hex edit re-decoding | `npm run media` regenerates the files; re-running produces identical PNGs (deterministic: timeline seeked to a fixed `t`, animations disabled) |
 | 6.4 | CI runs E2E on every push | Actions log shows the Playwright job green |
 
+> **Status: complete (2026-08-22), 6.1 through 6.4, plus 3.5.5 which was waiting
+> on Playwright.** 19 end-to-end tests green in Chromium alongside 211 unit tests;
+> lint and build clean. `npm run e2e` locally, and a second CI job that installs
+> Chromium and runs the same suite.
+>
+> The sweep reports what it checked: **280 field-to-byte assertions and 213
+> byte-to-field assertions** across the three lessons, every leaf of every packet
+> in one direction and an even sample of bytes in the other.
+>
+> Five things worth recording:
+>
+> 1. **The sweep alone cannot catch a wrong decoder, and now says so.** Its
+>    expectations come from running our own codec in Node, so it proves the UI and
+>    the codec agree — not that either is right. Shifting `ip.ttl` by one byte in
+>    the spec runner left all six sweep tests green; the Wireshark differential
+>    caught it and named the field (`packet 0, field ip.ttl vs tshark ip.ttl:
+>    expected '17' to be '255'`). A hand-written anchor set — thirteen offsets
+>    typed from RFC 894, 826, 791, 768 and 2131 — now fails on that same sabotage
+>    and names the field too.
+> 2. **The browser found two layout bugs the DOM tests could not.** The DHCP
+>    lesson squeezed the field tree to **zero width**: the hex column is sized by
+>    its content, and "Dynamic Host Configuration Protocol" in the legend inflated
+>    it until nothing was left. And the scrubber's rate selector hung 16px off the
+>    side of a 390px viewport. Both are fixed and both have a regression test at
+>    1280px and 390px.
+> 3. **The transport controls were font-dependent.** They were the media-control
+>    characters (U+23EE and friends), which headless Chromium rendered as empty
+>    boxes — visible in the first captured screenshot. They are inline SVG paths
+>    now.
+> 4. **Packets are switched by clicking a tab, not by re-navigating.** After
+>    mount the URL is an OUTPUT of the selection, so changing `?p=` in place
+>    leaves the page on the packet it already had. Deep links still work on a
+>    fresh load, which is what criterion #5 asks for; the sweep clicks.
+> 5. **`npm run media` is deterministic**, verified by regenerating and comparing
+>    checksums: same five PNGs byte for byte. It runs through Node's own
+>    TypeScript stripping, disables every animation, and seeks the virtual clock
+>    rather than waiting on it. The GIF is a real recording of a hex edit
+>    re-decoding, cut to 1.5 MB with ffmpeg.
+
 ### Phase 7 — pcap import
 
 | # | Step | Verify |

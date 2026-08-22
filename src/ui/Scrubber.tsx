@@ -14,6 +14,26 @@ export type ScrubberProps = {
 
 const RATES = [0.25, 0.5, 1, 2]
 
+/**
+ * Drawn rather than typed. The media-control characters (U+23EE and friends)
+ * depend on a font that carries them, and a headless Chromium renders them as
+ * empty boxes — which is how this was noticed. A path has no such dependency.
+ */
+const SHAPES: Record<'previous' | 'play' | 'pause' | 'next', string> = {
+  previous: 'M3 2h2v8H3zM11 2v8L5 6z',
+  play: 'M3 2l8 4-8 4z',
+  pause: 'M3 2h2.5v8H3zM7.5 2H10v8H7.5z',
+  next: 'M9 2h2v8H9zM1 2l6 4-6 4z',
+}
+
+function Icon({ shape }: { shape: keyof typeof SHAPES }) {
+  return (
+    <svg className="scrubber-icon" viewBox="0 0 14 12" width="14" height="12" aria-hidden="true">
+      <path d={SHAPES[shape]} fill="currentColor" />
+    </svg>
+  )
+}
+
 export function Scrubber({ clock, timeline }: ScrubberProps) {
   const { tMs, playing, rate, durationMs } = useClockSnapshot(clock)
   const stops = timeline.marks.map((mark) => mark.sentMs)
@@ -29,7 +49,7 @@ export function Scrubber({ clock, timeline }: ScrubberProps) {
     <div className="scrubber">
       <div className="scrubber-buttons">
         <button type="button" onClick={() => stepTo(-1)} aria-label="Previous packet">
-          ⏮
+          <Icon shape="previous" />
         </button>
         <button
           type="button"
@@ -37,10 +57,10 @@ export function Scrubber({ clock, timeline }: ScrubberProps) {
           onClick={() => clock.toggle()}
           aria-label={playing ? 'Pause' : 'Play'}
         >
-          {playing ? '⏸' : '⏵'}
+          <Icon shape={playing ? 'pause' : 'play'} />
         </button>
         <button type="button" onClick={() => stepTo(1)} aria-label="Next packet">
-          ⏭
+          <Icon shape="next" />
         </button>
       </div>
 

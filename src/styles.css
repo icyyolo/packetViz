@@ -225,6 +225,9 @@ main {
 .scrubber {
   display: flex;
   align-items: center;
+  /* Wraps rather than pushing the rate selector off the side of a phone: the
+     range input keeps a usable width and the controls drop to a second line. */
+  flex-wrap: wrap;
   gap: 0.8rem;
   margin: 0.8rem 0;
   padding: 0.5rem 0.8rem;
@@ -242,7 +245,8 @@ main {
   padding: 0.25rem 0.6rem;
 }
 .scrubber button:hover { border-color: var(--accent); }
-.scrubber-range { flex: 1; accent-color: var(--accent); }
+.scrubber-icon { display: block; }
+.scrubber-range { flex: 1 1 12rem; min-width: 0; accent-color: var(--accent); }
 .scrubber-time, .scrubber-rate select {
   font-family: var(--mono);
   font-size: 0.8rem;
@@ -294,13 +298,23 @@ main {
 
 .panes {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, auto) minmax(260px, 320px);
+  /* The tree column gets a floor rather than the tree itself: below about 20rem
+     its value column crushes to an ellipsis, and a floor here keeps the pane
+     from needing a scrollbar of its own on a desktop width. */
+  grid-template-columns: minmax(20rem, 1.2fr) minmax(0, auto) minmax(240px, 300px);
   gap: 1rem;
   align-items: start;
 }
 @media (max-width: 1200px) {
   .panes { grid-template-columns: 1fr; }
 }
+/* The hex column is sized by its content, so its widest child decides the
+   column's width. A long legend name — "Dynamic Host Configuration Protocol" —
+   would otherwise inflate that contribution until the field tree beside it was
+   squeezed to zero, which is exactly what the DHCP lesson did. Capping the pane
+   caps the contribution and makes the legend wrap instead. */
+.pane-hex { max-width: 40rem; }
+
 .pane {
   border: 1px solid var(--line);
   border-radius: 10px;
