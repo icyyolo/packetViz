@@ -61,7 +61,7 @@ export function HomePage() {
           <h2>Open your own .pcap</h2>
           <p>Drop in a capture from Wireshark or tcpdump and read it in the same four layers.</p>
           <footer className="card-meta">
-            <span className="badge badge-todo">Phase 7</span>
+            <span className="badge">pcap</span>
           </footer>
         </Link>
       </section>

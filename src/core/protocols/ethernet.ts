@@ -116,21 +116,33 @@ export function decodeEthernet(frame: Uint8Array): EthernetDecode {
 }
 
 /**
- * Trailing zero bytes after the payload, exposed as its own field so the hex
- * view can show that they belong to no protocol.
+ * Bytes after the payload, which belong to no protocol — exposed as their own
+ * field so the hex view can say so.
+ *
+ * Padding and trailer are not the same thing, and a capture from a real network
+ * is where the difference shows up. Padding is what brought a short frame up to
+ * the 60-byte minimum, so it only deserves the name when the frame is that
+ * length. Anything else — a 54-byte frame with twelve zero bytes on the end — is
+ * a trailer: bytes the sender or the capture path appended that the minimum
+ * cannot explain. Wireshark draws the line in exactly the same place, which is
+ * how this was noticed: `tests/import.test.ts` decoded a hand-typed foreign
+ * frame and tshark called our "padding" a trailer.
  */
 export function paddingNode(frame: Uint8Array, offset: number): FieldNode | undefined {
   if (offset >= frame.length) return undefined
   const raw = frame.subarray(offset)
+  const isPadding = frame.length === ETH_MIN_FRAME_BYTES
+
   return {
-    id: 'eth.padding',
-    name: 'Padding',
+    id: isPadding ? 'eth.padding' : 'eth.trailer',
+    name: isPadding ? 'Padding' : 'Trailer',
     byteStart: offset,
     byteLength: raw.length,
     raw,
     value: formatHexBytes(raw),
-    description:
-      'Zero bytes added by the sender so the frame reaches the 60-byte minimum. They are not part of the payload protocol.',
+    description: isPadding
+      ? `Zero bytes added by the sender so the frame reaches the ${ETH_MIN_FRAME_BYTES}-byte minimum. They are not part of the payload protocol.`
+      : `Bytes after the payload that the ${ETH_MIN_FRAME_BYTES}-byte minimum does not account for, so they are a trailer rather than padding. They belong to no protocol here.`,
     reference: 'IEEE 802.3 §4.2.3.3',
   }
 }

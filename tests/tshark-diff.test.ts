@@ -9,10 +9,9 @@
  * display string, so the test measures agreement about the wire format rather
  * than agreement about formatting.
  *
- * The mapping table is written out explicitly even though every Phase 1 field id
- * happens to match tshark's name. DHCP will not be so lucky (our `dhcp.opt.53`
- * vs tshark's `dhcp.option.dhcp`), and an explicit table means a rename on
- * either side fails loudly instead of silently skipping a field.
+ * The mapping table, and the two functions that put our values and tshark's into
+ * the same shape, live in `tests/tshark.ts` — `import.test.ts` asks the same
+ * questions of a capture this project did not write, and shares them.
  */
 
 import { execFileSync } from 'node:child_process'
@@ -20,199 +19,26 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
-import { readBits } from '../src/core/bytes.ts'
 import { leafFields, type FieldNode } from '../src/core/field.ts'
-import { formatIpv4, formatMac } from '../src/core/format.ts'
 import { writePcap } from '../src/core/pcap/write.ts'
 import { decodeFrame } from '../src/core/registry.ts'
 import { arpSpoofingScenario } from '../src/lessons/arp-spoofing/scenario.ts'
 import { dhcpScenario } from '../src/lessons/dhcp/scenario.ts'
 import type { PcapPacket } from '../src/core/pcap/write.ts'
 import { arpExchange, arpRequestFrame, dhcpExchange, lessonCapture } from './fixtures.ts'
-
-type Kind = 'mac' | 'ipv4' | 'number' | 'bytes' | 'ascii'
-
-type Mapping = {
-  /** Our field id. */
-  ours: string
-  /** tshark's field name. */
-  theirs: string
-  kind: Kind
-  /**
-   * Set when tshark reports the field in different units from the wire value:
-   * `ip.hdr_len` is words on the wire and bytes in tshark, `ip.frag_offset` is
-   * eight-byte units on the wire and bytes in tshark. `theirs = ours * scale`.
-   */
-  scale?: number
-  /**
-   * Set when tshark models the field as the whole byte(s) it shares with its
-   * neighbours rather than as the RFC's bit range. `ip.flags` is the case: the
-   * RFC defines three bits, and tshark reports the byte those bits sit in,
-   * fragment-offset bits included. Comparing the containing byte is the only
-   * thing both models actually agree about.
-   */
-  containingByte?: true
-}
-
-const FIELD_MAP: readonly Mapping[] = [
-  { ours: 'eth.dst', theirs: 'eth.dst', kind: 'mac' },
-  { ours: 'eth.src', theirs: 'eth.src', kind: 'mac' },
-  { ours: 'eth.type', theirs: 'eth.type', kind: 'number' },
-  { ours: 'eth.padding', theirs: 'eth.padding', kind: 'bytes' },
-
-  { ours: 'arp.hw.type', theirs: 'arp.hw.type', kind: 'number' },
-  { ours: 'arp.proto.type', theirs: 'arp.proto.type', kind: 'number' },
-  { ours: 'arp.hw.size', theirs: 'arp.hw.size', kind: 'number' },
-  { ours: 'arp.proto.size', theirs: 'arp.proto.size', kind: 'number' },
-  { ours: 'arp.opcode', theirs: 'arp.opcode', kind: 'number' },
-  { ours: 'arp.src.hw_mac', theirs: 'arp.src.hw_mac', kind: 'mac' },
-  { ours: 'arp.src.proto_ipv4', theirs: 'arp.src.proto_ipv4', kind: 'ipv4' },
-  { ours: 'arp.dst.hw_mac', theirs: 'arp.dst.hw_mac', kind: 'mac' },
-  { ours: 'arp.dst.proto_ipv4', theirs: 'arp.dst.proto_ipv4', kind: 'ipv4' },
-
-  { ours: 'ip.version', theirs: 'ip.version', kind: 'number' },
-  { ours: 'ip.hdr_len', theirs: 'ip.hdr_len', kind: 'number', scale: 4 },
-  { ours: 'ip.dsfield.dscp', theirs: 'ip.dsfield.dscp', kind: 'number' },
-  { ours: 'ip.dsfield.ecn', theirs: 'ip.dsfield.ecn', kind: 'number' },
-  { ours: 'ip.len', theirs: 'ip.len', kind: 'number' },
-  { ours: 'ip.id', theirs: 'ip.id', kind: 'number' },
-  { ours: 'ip.flags', theirs: 'ip.flags', kind: 'number', containingByte: true },
-  { ours: 'ip.frag_offset', theirs: 'ip.frag_offset', kind: 'number', scale: 8 },
-  { ours: 'ip.ttl', theirs: 'ip.ttl', kind: 'number' },
-  { ours: 'ip.proto', theirs: 'ip.proto', kind: 'number' },
-  { ours: 'ip.checksum', theirs: 'ip.checksum', kind: 'number' },
-  { ours: 'ip.src', theirs: 'ip.src', kind: 'ipv4' },
-  { ours: 'ip.dst', theirs: 'ip.dst', kind: 'ipv4' },
-
-  { ours: 'udp.srcport', theirs: 'udp.srcport', kind: 'number' },
-  { ours: 'udp.dstport', theirs: 'udp.dstport', kind: 'number' },
-  { ours: 'udp.length', theirs: 'udp.length', kind: 'number' },
-  { ours: 'udp.checksum', theirs: 'udp.checksum', kind: 'number' },
-
-  { ours: 'dhcp.type', theirs: 'dhcp.type', kind: 'number' },
-  { ours: 'dhcp.hw.type', theirs: 'dhcp.hw.type', kind: 'number' },
-  { ours: 'dhcp.hw.len', theirs: 'dhcp.hw.len', kind: 'number' },
-  { ours: 'dhcp.hops', theirs: 'dhcp.hops', kind: 'number' },
-  { ours: 'dhcp.id', theirs: 'dhcp.id', kind: 'number' },
-  { ours: 'dhcp.secs', theirs: 'dhcp.secs', kind: 'number' },
-  { ours: 'dhcp.flags', theirs: 'dhcp.flags', kind: 'number' },
-  { ours: 'dhcp.ip.client', theirs: 'dhcp.ip.client', kind: 'ipv4' },
-  { ours: 'dhcp.ip.your', theirs: 'dhcp.ip.your', kind: 'ipv4' },
-  { ours: 'dhcp.ip.server', theirs: 'dhcp.ip.server', kind: 'ipv4' },
-  { ours: 'dhcp.ip.relay', theirs: 'dhcp.ip.relay', kind: 'ipv4' },
-  { ours: 'dhcp.hw.mac_addr', theirs: 'dhcp.hw.mac_addr', kind: 'mac' },
-  { ours: 'dhcp.hw.addr_padding', theirs: 'dhcp.hw.addr_padding', kind: 'bytes' },
-  { ours: 'dhcp.server', theirs: 'dhcp.server', kind: 'ascii' },
-  { ours: 'dhcp.file', theirs: 'dhcp.file', kind: 'ascii' },
-  // tshark renders the four cookie bytes as if they were an address, so
-  // 0x63825363 comes back as 99.130.83.99. Same bytes, stranger clothes.
-  { ours: 'dhcp.cookie', theirs: 'dhcp.cookie', kind: 'ipv4' },
-]
-
-/**
- * Option VALUES, keyed by option code. tshark gives each registered option its
- * own field name — this is the divergence the plan predicted, and the reason the
- * mapping table is written out rather than assumed to be identity.
- *
- * Read with `-E occurrence=a` rather than from the JSON, because an option list
- * repeats field names and JSON objects cannot.
- */
-type OptionMapping = { code: number; theirs: string; kind: 'number' | 'ipv4' | 'number-list' }
-
-const OPTION_MAP: readonly OptionMapping[] = [
-  { code: 1, theirs: 'dhcp.option.subnet_mask', kind: 'ipv4' },
-  { code: 3, theirs: 'dhcp.option.router', kind: 'ipv4' },
-  { code: 6, theirs: 'dhcp.option.domain_name_server', kind: 'ipv4' },
-  { code: 50, theirs: 'dhcp.option.requested_ip_address', kind: 'ipv4' },
-  { code: 51, theirs: 'dhcp.option.ip_address_lease_time', kind: 'number' },
-  { code: 53, theirs: 'dhcp.option.dhcp', kind: 'number' },
-  { code: 54, theirs: 'dhcp.option.dhcp_server_id', kind: 'ipv4' },
-  { code: 55, theirs: 'dhcp.option.request_list_item', kind: 'number-list' },
-]
-
-/**
- * The structural parts of an option — the option node itself, its code byte and
- * its length byte — are verified by the option-list test rather than field by
- * field, because tshark models them as repeated `dhcp.option.type` and
- * `dhcp.option.length` occurrences instead of as one field per option.
- */
-const OPTION_STRUCTURE = /^dhcp\.opt\.\d+(\.(code|len))?$/
-
-function colonHex(raw: Uint8Array): string {
-  return Array.from(raw, (b) => b.toString(16).padStart(2, '0')).join(':')
-}
-
-/** Canonical form of OUR value, derived from the raw bytes. */
-function ourValue(node: FieldNode, frame: Uint8Array, mapping: Mapping): string {
-  switch (mapping.kind) {
-    case 'mac':
-      return formatMac(node.raw)
-    case 'ipv4':
-      return formatIpv4(node.raw)
-    case 'bytes':
-      return colonHex(node.raw)
-    case 'ascii':
-      return asciiValue(node.raw)
-    case 'number': {
-      const bitPos = mapping.containingByte === true ? node.byteStart * 8 : node.byteStart * 8 + (node.bitOffset ?? 0)
-      const bits = mapping.containingByte === true ? node.byteLength * 8 : node.bitLength ?? node.byteLength * 8
-      return String(readBits(frame, bitPos, bits) * (mapping.scale ?? 1))
-    }
-  }
-}
-
-/** tshark prints a NUL-terminated string field as its text, and an empty one as nothing. */
-function asciiValue(raw: Uint8Array): string {
-  const end = raw.indexOf(0)
-  return Array.from(raw.subarray(0, end < 0 ? raw.length : end), (b) => String.fromCharCode(b)).join('')
-}
-
-/** Canonical form of TSHARK's value. */
-function theirValue(text: string, kind: Kind): string {
-  switch (kind) {
-    case 'mac':
-    case 'bytes':
-      return text.toLowerCase()
-    case 'ascii':
-    case 'ipv4':
-      return text
-    case 'number':
-      return String(text.startsWith('0x') ? Number.parseInt(text, 16) : Number.parseInt(text, 10))
-  }
-}
-
-/**
- * tshark's JSON nests fields under one object per layer, and puts extra derived
- * fields in `*_tree` sub-objects. Flatten the top level of each layer; the
- * sub-objects are not string-valued, so they drop out on their own.
- */
-function flattenLayers(layers: Record<string, unknown>): Map<string, string> {
-  const out = new Map<string, string>()
-
-  // Recursive, because tshark nests a field's bit-level children under a
-  // `*_tree` sibling: `ip.dsfield.dscp` lives inside `ip.dsfield_tree`, not
-  // beside `ip.dsfield`. Top-level entries are visited first and win, so a
-  // nested field can never shadow the field it belongs to.
-  const visit = (value: unknown): void => {
-    if (typeof value !== 'object' || value === null) return
-    for (const [name, child] of Object.entries(value as Record<string, unknown>)) {
-      if (typeof child === 'string' && !out.has(name)) out.set(name, child)
-    }
-    for (const child of Object.values(value as Record<string, unknown>)) visit(child)
-  }
-
-  visit(layers)
-  return out
-}
-
-function tsharkAvailable(): boolean {
-  try {
-    execFileSync('tshark', ['-v'], { stdio: 'ignore' })
-    return true
-  } catch {
-    return false
-  }
-}
+import {
+  FIELD_MAP,
+  OPTION_MAP,
+  OPTION_STRUCTURE,
+  flattenLayers,
+  isMappedOptionValue,
+  optionCode,
+  optionNodes,
+  ourOptionValue,
+  ourValue,
+  theirValue,
+  tsharkAvailable,
+} from './tshark.ts'
 
 const available = tsharkAvailable()
 const required = process.env.REQUIRE_TSHARK === '1'
@@ -535,34 +361,4 @@ function differential(
       expect(stale, `mapping table names fields this tshark does not emit: ${stale.join(', ')}`).toEqual([])
     })
   })
-}
-
-/** The option container nodes of a decode, in wire order. */
-function optionNodes(packet: { tree: FieldNode[] }): FieldNode[] {
-  const dhcp = packet.tree.find((node) => node.id === 'dhcp')
-  return (dhcp?.children ?? []).filter((node) => OPTION_STRUCTURE.test(node.id))
-}
-
-function optionCode(id: string): number {
-  return Number.parseInt(id.slice('dhcp.opt.'.length), 10)
-}
-
-function isMappedOptionValue(id: string): boolean {
-  const match = /^dhcp\.opt\.(\d+)\.value$/.exec(id)
-  return match !== null && OPTION_MAP.some((mapping) => mapping.code === Number(match[1]))
-}
-
-/** Our option value in tshark's shape: one string per occurrence tshark reports. */
-function ourOptionValue(raw: Uint8Array, kind: OptionMapping['kind']): string[] {
-  switch (kind) {
-    case 'ipv4': {
-      const addresses: string[] = []
-      for (let i = 0; i + 4 <= raw.length; i += 4) addresses.push(formatIpv4(raw.subarray(i, i + 4)))
-      return addresses
-    }
-    case 'number-list':
-      return Array.from(raw, (byte) => String(byte))
-    case 'number':
-      return [String(raw.reduce((sum, byte) => sum * 256 + byte, 0))]
-  }
 }

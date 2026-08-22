@@ -6,6 +6,7 @@
  */
 
 import { expect, test } from '@playwright/test'
+import { writePcap } from '../src/core/pcap/write.ts'
 import { LESSONS } from '../src/lessons/index.ts'
 import { compileScenario } from '../src/scenario/compile.ts'
 
@@ -77,3 +78,47 @@ for (const width of [1280, 390]) {
     }
   })
 }
+
+/**
+ * Phase 7 in a real browser: a file goes through the File API, the reader and
+ * the decoder, and comes out as the same four packets the lesson shows. jsdom
+ * can be told a `File` has bytes; only a browser proves the whole path.
+ */
+test('an exported capture can be dropped back in and decodes to the same packets', async ({ page }) => {
+  const dhcp = LESSONS.find((lesson) => lesson.slug === 'dhcp')!
+  const timeline = compileScenario(dhcp.scenario)
+  const capture = writePcap(
+    timeline.packets.map((packet, index) => ({
+      frame: packet.frame,
+      tMs: timeline.marks[index]?.sentMs ?? 0,
+    })),
+  )
+
+  await page.goto('#/import')
+  await page.getByLabel('Capture file').setInputFiles({
+    name: 'dhcp.pcap',
+    mimeType: 'application/vnd.tcpdump.pcap',
+    buffer: Buffer.from(capture),
+  })
+
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('dhcp.pcap')
+  await expect(page.locator('.packet-tab')).toHaveCount(timeline.packets.length)
+  await expect(page.locator('.packet-tab-summary')).toHaveText(
+    timeline.packets.map((packet) => packet.summary),
+  )
+  await expect(page.locator('[role="tree"]')).toBeVisible()
+  await expect(page.locator('.hex-grid')).toBeVisible()
+  await expect(page.locator('.problem.is-error')).toHaveCount(0)
+})
+
+test('a file that is not a capture explains itself instead of going blank', async ({ page }) => {
+  await page.goto('#/import')
+  await page.getByLabel('Capture file').setInputFiles({
+    name: 'notes.pcap',
+    mimeType: 'application/octet-stream',
+    buffer: Buffer.from('this is not a capture, it is a text file'.repeat(8)),
+  })
+
+  await expect(page.getByRole('alert')).toContainText('Not a pcap file')
+  await expect(page.getByLabel('Capture file')).toBeAttached()
+})

@@ -654,6 +654,56 @@ Runs after both lessons exist so the tests iterate real content, not fixtures.
 | 7.4 | Unknown-protocol handling + error boundary: undecodable payload becomes one raw `FieldNode`, still hex-linked; a corrupt file surfaces a message, never a blank page | Import a capture containing TCP → raw payload, no crash. Import `/dev/urandom` truncated to 4 KB and renamed `.pcap` → clear error message, page still interactive |
 | 7.5 | Round-trip against a foreign capture | Import a Wireshark-captured ARP/DHCP file from another machine → field values match `tshark -T json` on the same file |
 
+> **Status: complete (2026-08-22), 7.1 through 7.5.** 231 unit tests green across
+> 22 files, 12 end-to-end tests, lint and build clean. `#/import` takes a file,
+> and the four layers do not know or care that the bytes are somebody else's.
+>
+> Six things worth recording:
+>
+> 1. **A foreign frame found a real inaccuracy in our Ethernet decoder.** We
+>    called every byte after the payload "padding". Wireshark reserves that word
+>    for bytes that brought a short frame up to the 60-byte minimum and calls
+>    anything else a **trailer** — a distinction our own encoders could never have
+>    surfaced, because they always pad to exactly 60. A hand-typed 54-byte ARP
+>    reply with twelve trailing zeros is the case that separates them. `eth.trailer`
+>    now exists, and `tests/import.test.ts` carries the same reply at both 54 and
+>    60 bytes so both branches are checked against the oracle.
+> 2. **"Foreign" needed two independent sources.** `editcap -F pcap` rewrites our
+>    own capture with Wireshark's writer, which is the only way the reader gets
+>    held to the byte order we never produce (editcap writes little-endian on x86;
+>    we write big-endian). `text2pcap` assembles frames from a hex dump typed into
+>    the test file, so those bytes never passed through our encoders at all. The
+>    first tests the container, the second tests the decoder.
+> 3. **The Wireshark mapping table moved to `tests/tshark.ts`.** The imported
+>    capture is compared field for field using the *same* table the generated
+>    traffic uses — 144 comparisons on the editcap file, 38 on the hand-typed
+>    frames — because two correctness checks that use different mappings are not
+>    comparable results.
+> 4. **Laziness is a property of the format, not an optimisation we added.** pcap
+>    records are a linked walk, so `readPcap` touches 16 bytes per packet and
+>    never the frames; `frameAt` returns a `subarray` view into the file the
+>    browser already loaded. A 20,000-packet capture is read with zero decodes,
+>    and the cap keeps 5,000 records with a notice naming how many were skipped.
+>    Above 32 packets the ladder is dropped: a diagram of 5,000 arrows is not a
+>    diagram, and decoding every frame to label it is exactly the cost laziness
+>    was avoiding.
+> 5. **The hosts on an imported capture are derived from the frames themselves.**
+>    Nobody wrote a scenario for a stranger's file, so every distinct Ethernet
+>    address in the bytes becomes a lifeline and its label is an IP address read
+>    out of a packet it sent. This is the one place the single-source-of-truth
+>    invariant would have been easy to break by typing a host list. What a capture
+>    genuinely does not contain is propagation delay — one timestamp per packet,
+>    at one observation point — so `linkDelayMs` is 0 and the arrows are flat
+>    rather than given an invented slope.
+> 6. **pcapng gets named, not rejected.** It is what Wireshark saves by default,
+>    so "not a pcap file" would be a true and useless message; the reader says
+>    what the file is and prints the `editcap -F pcap` line that converts it.
+>
+> Falsification check: forcing the reader to read every header big-endian left
+> the writer's own tests green and failed five — three in `pcap.test.ts`, two in
+> `import.test.ts`, including the field-for-field comparison against tshark.
+
+
 ### Phase 8 — Home page concept map, docs, hand-off
 
 Built last on purpose: the map reads the protocol registry, so it needs a

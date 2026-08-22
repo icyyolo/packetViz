@@ -689,3 +689,56 @@ main {
   cursor: pointer;
 }
 .reset-button:hover { border-color: var(--accent); }
+
+/* ---- Import (Phase 7) --------------------------------------------------- */
+
+.import { max-width: 62rem; margin: 0 auto; padding: 1.2rem 1rem 3rem; }
+.import-foot { color: var(--text-dim); font-size: 0.9rem; }
+
+.dropzone-wrap { margin: 1.5rem 0; }
+.dropzone {
+  border: 2px dashed var(--line);
+  border-radius: 12px;
+  background: var(--bg-raised);
+  padding: 2.5rem 1.5rem;
+  text-align: center;
+}
+.dropzone.is-dragging { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--bg-raised)); }
+.dropzone-lead { font-size: 1.15rem; margin: 0 0 0.4rem; }
+.dropzone-note { color: var(--text-dim); font-size: 0.9rem; margin: 0 0 1rem; }
+
+/* Reader messages and skipped-packet notices share one look: neither is a
+   decoder Problem, so neither belongs in the .problems list. */
+.import-message {
+  border-left: 3px solid var(--warning);
+  background: var(--bg-raised);
+  padding: 0.5rem 0.7rem;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  margin: 0.8rem 0;
+}
+.import-error {
+  border: 1px solid var(--error);
+  border-radius: 10px;
+  background: var(--bg-raised);
+  padding: 1.2rem;
+  margin: 1.5rem auto;
+  max-width: 42rem;
+}
+.capture-note { color: var(--text-dim); font-size: 0.85rem; margin: 0.6rem 0 0; }
+
+/* A capped list is still up to 5,000 rows, so it scrolls in place rather than
+   pushing the packet's own panes off the page. */
+.packet-list {
+  display: grid;
+  gap: 0.35rem;
+  margin: 1rem 0 0.8rem;
+  max-height: 15rem;
+  overflow-y: auto;
+  padding-right: 0.3rem;
+}
+.packet-list .packet-tab {
+  display: grid;
+  grid-template-columns: 3.5rem 1fr auto;
+  width: 100%;
+}
