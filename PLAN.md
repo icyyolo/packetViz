@@ -569,6 +569,31 @@ README claim into something an interviewer can falsify in five seconds.
 | 5.3 | Export + Wireshark check | `tshark -r dhcp.pcap -T fields -e dhcp.option.dhcp` → `1,2,3,5` (DISCOVER/OFFER/REQUEST/ACK) |
 | 5.4 | Invariant grep: `grep -nE '\b(86400|0x63825363|53|255\.255\.255\.255)\b' src/lessons/dhcp/scenario.ts` — addresses and lease time are legitimate scene intent; option codes and the magic cookie must **not** appear | Only address/lease literals present |
 
+> **Status: complete (2026-08-22), 5.1 through 5.4.** 211 tests green across 20
+> files, lint clean, build clean. The lesson lives at `#/lesson/dhcp`: client
+> `00:11:22:33:44:55` with no address, server `10.0.0.1`, offered `10.0.0.50`,
+> lease 86,400 seconds, and a printer that receives all four broadcasts and wants
+> none of them.
+>
+> Three notes:
+>
+> 1. **All four messages are broadcast**, including the server's. The client sets
+>    the broadcast flag — it cannot receive a unicast reply to an address it does
+>    not have yet — and RFC 2131 says a server must then broadcast its answer.
+>    That is a protocol fact and lives in the builders, so the scenario's four
+>    events all say `to: null`.
+> 2. **The neighbour-cache panel is now conditional.** It is folded from ARP
+>    receptions, and a DHCP lesson has none, so three permanently empty tables
+>    were showing. The condition reads the decodes like everything else.
+> 3. **The narration made a claim the UI could not support**, again. It said to
+>    compare the ACK with the Offer; the diff pane always compares against the
+>    previous packet, which for the ACK is the Request. The prose now describes
+>    the diff that is actually on screen. Caught by a DOM test asserting the
+>    diff's contents, not by reading.
+>
+> Step 5.3 is a test rather than a manual check: `tshark -T fields -e
+> dhcp.option.dhcp` over the lesson's exported capture must read `1, 2, 3, 5`.
+
 ### Phase 6 — E2E gates
 
 Runs after both lessons exist so the tests iterate real content, not fixtures.

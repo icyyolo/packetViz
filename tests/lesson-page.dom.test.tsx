@@ -182,3 +182,55 @@ describe('the spoofing lesson', () => {
     expect(outcomes).toContain('entry overwritten')
   })
 })
+
+describe('the DHCP lesson', () => {
+  it('renders the whole stack for all four messages', () => {
+    renderAt('/lesson/dhcp')
+
+    const summaries = Array.from(document.querySelectorAll('.packet-tab-summary'), (n) => n.textContent)
+    expect(summaries).toEqual(['DHCP DISCOVER', 'DHCP OFFER', 'DHCP REQUEST', 'DHCP ACK'])
+
+    // Four protocol sections in the hex legend: Ethernet, IPv4, UDP, DHCP.
+    const legend = Array.from(document.querySelectorAll('.hex-legend-name'), (n) => n.textContent)
+    expect(legend).toEqual([
+      'Ethernet II',
+      'Internet Protocol Version 4',
+      'User Datagram Protocol',
+      'Dynamic Host Configuration Protocol',
+    ])
+  })
+
+  it('shows no neighbour caches, because there is no ARP in it', () => {
+    renderAt('/lesson/dhcp')
+    expect(document.querySelector('.cache-section')).toBeNull()
+    // The ARP lesson still has them, so this is a condition and not a removal.
+    cleanup()
+    renderAt('/lesson/arp')
+    expect(document.querySelector('.cache-section')).toBeTruthy()
+  })
+
+  it('reads the offered address out of the ACK, not out of the lesson file', async () => {
+    const user = userEvent.setup()
+    renderAt('/lesson/dhcp?p=3&f=dhcp.ip.your')
+
+    const panel = within(document.getElementById('field-detail-panel') as HTMLElement)
+    expect(panel.getByText('Your (client) IP address')).toBeTruthy()
+    expect(panel.getByText('10.0.0.50')).toBeTruthy()
+
+    // ...and the diff against the Request shows the exchange turning around:
+    // ports swap, the direction reverses, and option 53 changes by one byte.
+    await user.click(screen.getByText(/Difference from packet #3/))
+    const diff = document.querySelector('.diff-table')?.textContent ?? ''
+    expect(diff).toContain('3 (REQUEST)')
+    expect(diff).toContain('5 (ACK)')
+    expect(diff).toContain('68 (DHCP client)')
+  })
+
+  it('verifies both checksums in the browser, the same way tshark does', () => {
+    renderAt('/lesson/dhcp')
+    const values = Array.from(document.querySelectorAll('.tree-row'), (n) => n.textContent ?? '')
+    expect(values.some((text) => text.includes('Header checksum') && text.includes('[correct]'))).toBe(true)
+    expect(values.some((text) => text.includes('Checksum') && text.includes('[correct]'))).toBe(true)
+    expect(document.querySelector('.problems')).toBeNull()
+  })
+})

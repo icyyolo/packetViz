@@ -77,10 +77,15 @@ export function LessonShell(props: LessonShellProps) {
         <p>{step?.body ?? narration.intro}</p>
       </section>
 
-      <section className="cache-section" aria-label="Neighbour caches">
-        <h2>Neighbour caches at {tMs.toFixed(0)} ms</h2>
-        <ArpCacheView timeline={timeline} snapshots={snapshots} tMs={tMs} />
-      </section>
+      {/* A lesson with no ARP in it has no neighbour caches to show, and three
+          permanently empty tables would be worse than no tables. The condition
+          is read from the decodes, like everything else here. */}
+      {snapshots.length === 0 ? null : (
+        <section className="cache-section" aria-label="Neighbour caches">
+          <h2>Neighbour caches at {tMs.toFixed(0)} ms</h2>
+          <ArpCacheView timeline={timeline} snapshots={snapshots} tMs={tMs} />
+        </section>
+      )}
 
       <nav className="packet-tabs" aria-label="Packets">
         {timeline.packets.map((decoded, index) => (

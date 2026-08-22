@@ -11,6 +11,8 @@ import { arpNarration } from './arp/narration.ts'
 import { arpScenario } from './arp/scenario.ts'
 import { arpSpoofingNarration } from './arp-spoofing/narration.ts'
 import { arpSpoofingScenario } from './arp-spoofing/scenario.ts'
+import { dhcpNarration } from './dhcp/narration.ts'
+import { dhcpScenario } from './dhcp/scenario.ts'
 
 export type LessonMeta = {
   slug: string
@@ -43,6 +45,15 @@ export const LESSONS: readonly Lesson[] = [
     scenario: arpSpoofingScenario,
     narration: arpSpoofingNarration,
     filename: 'arp-spoofing.pcap',
+  },
+  {
+    slug: 'dhcp',
+    title: 'DHCP: how a host gets an address',
+    blurb:
+      'Four broadcasts between a host with no address and a server willing to lend it one — and the whole Ethernet, IPv4, UDP and DHCP stack in every packet.',
+    scenario: dhcpScenario,
+    narration: dhcpNarration,
+    filename: 'dhcp.pcap',
   },
 ]
 

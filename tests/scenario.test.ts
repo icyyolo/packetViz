@@ -90,6 +90,22 @@ describe('single-source-of-truth invariant', () => {
     /ff:ff:ff:ff:ff:ff/i,
     /\bencodeArp\b/,
     /\bencodeEthernet\b/,
+    // Phase 4's stack brings its own facts to keep out: the magic cookie, option
+    // codes, the ports, the broadcast address and the encoders themselves.
+    /0x63825363/,
+    /\bmagic\b/i,
+    /\bDHCP_OPTION\b/,
+    /\bDHCP_MESSAGE_TYPE\b/,
+    /\bDHCP_OP\b/,
+    /\bencodeDhcp\b/,
+    /\bencodeIpv4\b/,
+    /\bencodeUdp\b/,
+    /\b255\.255\.255\.255\b/,
+    /\bbroadcast flag\b/i,
+    // The ports by name rather than by number: a bare 67 could legitimately be a
+    // timestamp, and a false positive here would be a test that cries wolf.
+    /\bDHCP_(CLIENT|SERVER)_PORT\b/,
+    /\bport\b/i,
   ]
 
   /** Every scenario file there is, found rather than listed, so a new lesson is covered on the day it lands. */
@@ -110,6 +126,16 @@ describe('single-source-of-truth invariant', () => {
         )
       }
     }
+  })
+
+  it('leaves the DHCP lesson with nothing but hosts, a lease and timings', () => {
+    const code = stripComments(readFileSync('src/lessons/dhcp/scenario.ts', 'utf8'))
+    // A lease is scene intent: which address is on offer, for how long, and with
+    // what mask, router and name server. How any of it is encoded is not.
+    expect(code).toContain('10.0.0.50')
+    expect(code).toContain('86400')
+    expect(code).toContain('255.255.255.0')
+    expect(code).toContain('linkDelayMs')
   })
 
   it('leaves only host addresses and timings behind', () => {

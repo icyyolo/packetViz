@@ -26,6 +26,7 @@ import { formatIpv4, formatMac } from '../src/core/format.ts'
 import { writePcap } from '../src/core/pcap/write.ts'
 import { decodeFrame } from '../src/core/registry.ts'
 import { arpSpoofingScenario } from '../src/lessons/arp-spoofing/scenario.ts'
+import { dhcpScenario } from '../src/lessons/dhcp/scenario.ts'
 import type { PcapPacket } from '../src/core/pcap/write.ts'
 import { arpExchange, arpRequestFrame, dhcpExchange, lessonCapture } from './fixtures.ts'
 
@@ -263,6 +264,32 @@ describe('Wireshark differential', () => {
   // The whole Phase 4 stack at once: Ethernet, IPv4, UDP and DHCP, including
   // both checksums and an option list read as a sequence.
   differential('on a generated DORA exchange', 'dhcp.pcap', dhcpExchange(), [], 'eth:ethertype:ip:udp:dhcp')
+
+  // The lesson's own capture, byte for byte as the export button writes it.
+  differential(
+    'on the DHCP lesson capture',
+    'dhcp-lesson.pcap',
+    lessonCapture(dhcpScenario),
+    [],
+    'eth:ethertype:ip:udp:dhcp',
+  )
+
+  it.skipIf(!available)('sees the lesson as a DISCOVER, OFFER, REQUEST, ACK exchange', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'packetviz-dora-'))
+    const file = join(dir, 'dora.pcap')
+    writeFileSync(file, writePcap(lessonCapture(dhcpScenario)))
+
+    // Plan step 5.3, run as a test rather than by hand: message types 1, 2, 3, 5
+    // in order, read by Wireshark out of the file a visitor can download.
+    const types = execFileSync('tshark', ['-r', file, '-T', 'fields', '-e', 'dhcp.option.dhcp'], {
+      encoding: 'utf8',
+    })
+      .split('\n')
+      .filter((line) => line.length > 0)
+    rmSync(dir, { recursive: true, force: true })
+
+    expect(types).toEqual(['1', '2', '3', '5'])
+  })
 
   /**
    * Phase 3.5 makes layer 4 writable, so the oracle should also be asked about
