@@ -22,7 +22,7 @@ import { readBits } from '../src/core/bytes.ts'
 import type { FieldNode } from '../src/core/field.ts'
 import { formatIpv4, formatMac } from '../src/core/format.ts'
 
-export type Kind = 'mac' | 'ipv4' | 'number' | 'bytes' | 'ascii'
+export type Kind = 'mac' | 'ipv4' | 'number' | 'bytes' | 'ascii' | 'name'
 
 export type Mapping = {
   /** Our field id. */
@@ -44,6 +44,19 @@ export type Mapping = {
    * thing both models actually agree about.
    */
   containingByte?: true
+  /**
+   * Set when tshark emits the field for some packets and not others, with the
+   * reason. DNS is the case: Wireshark hides the three flag bits that only mean
+   * something in a response, so a query has no `dns.flags.authoritative` even
+   * though the bit is right there in the byte. We show it, because it is in the
+   * buffer and this project's whole claim is that the tree is a decode of the
+   * buffer.
+   *
+   * A mapping marked this way is skipped only for the packets tshark left it out
+   * of. If tshark never emits it anywhere in a capture that contains the field,
+   * the stale-mapping test still fails — so a typo cannot hide here.
+   */
+  sometimesAbsent?: string
 }
 
 export const FIELD_MAP: readonly Mapping[] = [
@@ -103,6 +116,94 @@ export const FIELD_MAP: readonly Mapping[] = [
   // tshark renders the four cookie bytes as if they were an address, so
   // 0x63825363 comes back as 99.130.83.99. Same bytes, stranger clothes.
   { ours: 'dhcp.cookie', theirs: 'dhcp.cookie', kind: 'ipv4' },
+
+  { ours: 'icmp.type', theirs: 'icmp.type', kind: 'number' },
+  { ours: 'icmp.code', theirs: 'icmp.code', kind: 'number' },
+  { ours: 'icmp.checksum', theirs: 'icmp.checksum', kind: 'number' },
+  { ours: 'icmp.ident', theirs: 'icmp.ident', kind: 'number' },
+  { ours: 'icmp.seq', theirs: 'icmp.seq', kind: 'number' },
+  // An echo payload means nothing to ICMP, so Wireshark hands it to the generic
+  // data dissector and it arrives as a layer of its own rather than an ICMP field.
+  { ours: 'icmp.data', theirs: 'data.data', kind: 'bytes' },
+
+  { ours: 'tcp.srcport', theirs: 'tcp.srcport', kind: 'number' },
+  { ours: 'tcp.dstport', theirs: 'tcp.dstport', kind: 'number' },
+  // The pinned divergence worth understanding: Wireshark shows sequence and
+  // acknowledgement numbers RELATIVE to each side's initial number by default,
+  // which is a fact about the capture rather than about the packet. `tcp.seq`
+  // is therefore its relative number and `tcp.seq_raw` is the wire value — the
+  // one our decoder reports, because the wire value is what is in the buffer.
+  { ours: 'tcp.seq', theirs: 'tcp.seq_raw', kind: 'number' },
+  { ours: 'tcp.ack', theirs: 'tcp.ack_raw', kind: 'number' },
+  { ours: 'tcp.hdr_len', theirs: 'tcp.hdr_len', kind: 'number', scale: 4 },
+  { ours: 'tcp.flags.res', theirs: 'tcp.flags.res', kind: 'number' },
+  { ours: 'tcp.flags.ns', theirs: 'tcp.flags.ns', kind: 'number' },
+  { ours: 'tcp.flags.cwr', theirs: 'tcp.flags.cwr', kind: 'number' },
+  { ours: 'tcp.flags.ecn', theirs: 'tcp.flags.ecn', kind: 'number' },
+  { ours: 'tcp.flags.urg', theirs: 'tcp.flags.urg', kind: 'number' },
+  { ours: 'tcp.flags.ack', theirs: 'tcp.flags.ack', kind: 'number' },
+  { ours: 'tcp.flags.push', theirs: 'tcp.flags.push', kind: 'number' },
+  { ours: 'tcp.flags.reset', theirs: 'tcp.flags.reset', kind: 'number' },
+  { ours: 'tcp.flags.syn', theirs: 'tcp.flags.syn', kind: 'number' },
+  { ours: 'tcp.flags.fin', theirs: 'tcp.flags.fin', kind: 'number' },
+  { ours: 'tcp.window_size_value', theirs: 'tcp.window_size_value', kind: 'number' },
+  { ours: 'tcp.checksum', theirs: 'tcp.checksum', kind: 'number' },
+  { ours: 'tcp.urgent_pointer', theirs: 'tcp.urgent_pointer', kind: 'number' },
+  // Options: tshark names each one after what it is rather than after its kind
+  // byte, so these are the same divergence DHCP has, one layer down.
+  { ours: 'tcp.opt.1', theirs: 'tcp.options.nop', kind: 'bytes' },
+  { ours: 'tcp.opt.2.value', theirs: 'tcp.options.mss_val', kind: 'number' },
+  { ours: 'tcp.opt.3.value', theirs: 'tcp.options.wscale.shift', kind: 'number' },
+
+  { ours: 'dns.id', theirs: 'dns.id', kind: 'number' },
+  { ours: 'dns.flags.response', theirs: 'dns.flags.response', kind: 'number' },
+  { ours: 'dns.flags.opcode', theirs: 'dns.flags.opcode', kind: 'number' },
+  {
+    ours: 'dns.flags.authoritative',
+    theirs: 'dns.flags.authoritative',
+    kind: 'number',
+    sometimesAbsent: 'Wireshark hides it in a query: only meaningful in a response',
+  },
+  { ours: 'dns.flags.truncated', theirs: 'dns.flags.truncated', kind: 'number' },
+  { ours: 'dns.flags.recdesired', theirs: 'dns.flags.recdesired', kind: 'number' },
+  {
+    ours: 'dns.flags.recavail',
+    theirs: 'dns.flags.recavail',
+    kind: 'number',
+    sometimesAbsent: 'Wireshark hides it in a query: only meaningful in a response',
+  },
+  { ours: 'dns.flags.z', theirs: 'dns.flags.z', kind: 'number' },
+  {
+    ours: 'dns.flags.authenticated',
+    theirs: 'dns.flags.authenticated',
+    kind: 'number',
+    sometimesAbsent: 'Wireshark hides it in a query: only meaningful in a response',
+  },
+  { ours: 'dns.flags.checkdisable', theirs: 'dns.flags.checkdisable', kind: 'number' },
+  {
+    ours: 'dns.flags.rcode',
+    theirs: 'dns.flags.rcode',
+    kind: 'number',
+    sometimesAbsent: 'Wireshark hides it in a query: a question has no reply code',
+  },
+  { ours: 'dns.count.queries', theirs: 'dns.count.queries', kind: 'number' },
+  { ours: 'dns.count.answers', theirs: 'dns.count.answers', kind: 'number' },
+  { ours: 'dns.count.auth_rr', theirs: 'dns.count.auth_rr', kind: 'number' },
+  { ours: 'dns.count.add_rr', theirs: 'dns.count.add_rr', kind: 'number' },
+  // The two `name` fields are the only comparison in this table made against our
+  // DECODED value rather than against the field's own bytes — because a
+  // compressed name's bytes are a pointer, and the name is somewhere else in the
+  // message. Comparing raw here would be comparing two pointers and learning
+  // nothing about whether we followed them to the same place.
+  { ours: 'dns.qry.name', theirs: 'dns.qry.name', kind: 'name' },
+  { ours: 'dns.qry.type', theirs: 'dns.qry.type', kind: 'number' },
+  { ours: 'dns.qry.class', theirs: 'dns.qry.class', kind: 'number' },
+  { ours: 'dns.resp.name', theirs: 'dns.resp.name', kind: 'name' },
+  { ours: 'dns.resp.type', theirs: 'dns.resp.type', kind: 'number' },
+  { ours: 'dns.resp.class', theirs: 'dns.resp.class', kind: 'number' },
+  { ours: 'dns.resp.ttl', theirs: 'dns.resp.ttl', kind: 'number' },
+  { ours: 'dns.resp.len', theirs: 'dns.resp.len', kind: 'number' },
+  { ours: 'dns.a', theirs: 'dns.a', kind: 'ipv4' },
 ]
 
 /**
@@ -134,6 +235,14 @@ export const OPTION_MAP: readonly OptionMapping[] = [
  */
 export const OPTION_STRUCTURE = /^dhcp\.opt\.\d+(\.(code|len))?$/
 
+/**
+ * The same arrangement for TCP: tshark reports `tcp.option_kind` and
+ * `tcp.option_len` once per option instead of one field per option, so the
+ * structural bytes are verified as a SEQUENCE by the option-list test and the
+ * values are mapped individually above.
+ */
+export const TCP_OPTION_STRUCTURE = /^tcp\.opt\.\d+\.(kind|len)$/
+
 export function colonHex(raw: Uint8Array): string {
   return Array.from(raw, (b) => b.toString(16).padStart(2, '0')).join(':')
 }
@@ -149,6 +258,8 @@ export function ourValue(node: FieldNode, frame: Uint8Array, mapping: Mapping): 
       return colonHex(node.raw)
     case 'ascii':
       return asciiValue(node.raw)
+    case 'name':
+      return node.value
     case 'number': {
       const bitPos = mapping.containingByte === true ? node.byteStart * 8 : node.byteStart * 8 + (node.bitOffset ?? 0)
       const bits = mapping.containingByte === true ? node.byteLength * 8 : node.bitLength ?? node.byteLength * 8
@@ -171,6 +282,7 @@ export function theirValue(text: string, kind: Kind): string {
       return text.toLowerCase()
     case 'ascii':
     case 'ipv4':
+    case 'name':
       return text
     case 'number':
       return String(text.startsWith('0x') ? Number.parseInt(text, 16) : Number.parseInt(text, 10))
@@ -209,6 +321,14 @@ export function tsharkAvailable(): boolean {
     return false
   }
 }
+/** The TCP option nodes of a decode, in wire order — NOPs and ENDs included. */
+export function tcpOptionNodes(packet: { tree: FieldNode[] }): FieldNode[] {
+  const ip = packet.tree.find((node) => node.id === 'ip')
+  const tcp = ip?.children?.find((node) => node.id === 'tcp')
+    ?? packet.tree.find((node) => node.id === 'tcp')
+  return (tcp?.children ?? []).filter((node) => /^tcp\.opt\.\d+$/.test(node.id))
+}
+
 /** The option container nodes of a decode, in wire order. */
 export function optionNodes(packet: { tree: FieldNode[] }): FieldNode[] {
   const dhcp = packet.tree.find((node) => node.id === 'dhcp')

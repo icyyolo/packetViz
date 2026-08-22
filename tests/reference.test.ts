@@ -15,7 +15,16 @@ const implemented = describeProtocols().filter((protocol) => protocol.implemente
 
 describe('header diagrams', () => {
   it('draws one for every implemented protocol', () => {
-    expect(implemented.map((protocol) => protocol.id)).toEqual(['eth', 'arp', 'ip', 'udp', 'dhcp'])
+    expect(implemented.map((protocol) => protocol.id)).toEqual([
+      'eth',
+      'arp',
+      'ip',
+      'icmp',
+      'tcp',
+      'udp',
+      'dhcp',
+      'dns',
+    ])
     for (const protocol of implemented) {
       expect(diagramRows(protocol.specs).length, protocol.id).toBeGreaterThan(0)
     }

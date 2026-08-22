@@ -19,7 +19,7 @@ describe('the describable registry', () => {
       .filter((protocol) => protocol.implemented)
       .map((protocol) => protocol.id)
 
-    expect(implemented).toEqual(['eth', 'arp', 'ip', 'udp', 'dhcp'])
+    expect(implemented).toEqual(['eth', 'arp', 'ip', 'icmp', 'tcp', 'udp', 'dhcp', 'dns'])
   })
 
   it('names the protocols it does not implement, rather than hiding them', () => {
@@ -27,12 +27,13 @@ describe('the describable registry', () => {
       .filter((protocol) => !protocol.implemented)
       .map((protocol) => protocol.id)
 
-    expect(missing).toEqual(['icmp', 'tcp', 'dns'])
+    expect(missing).toEqual(['ipv6', 'tls', 'http'])
   })
 
   it('derives the encapsulation edges, including edges to unimplemented protocols', () => {
-    expect(findProtocol('eth')?.encapsulates).toEqual(['arp', 'ip'])
+    expect(findProtocol('eth')?.encapsulates).toEqual(['arp', 'ip', 'ipv6'])
     expect(findProtocol('ip')?.encapsulates).toEqual(['icmp', 'tcp', 'udp'])
+    expect(findProtocol('tcp')?.encapsulates).toEqual(['tls', 'http'])
     expect(findProtocol('udp')?.encapsulates).toEqual(['dhcp', 'dns'])
     expect(findProtocol('dhcp')?.encapsulates).toEqual([])
   })

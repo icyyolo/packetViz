@@ -46,19 +46,22 @@ function rawIpPcap(): Uint8Array {
 }
 
 /**
- * Ethernet + IPv4 + TCP. We have no TCP decoder, which is the point: the payload
- * has to survive as bytes rather than as a crash or a blank pane.
+ * Ethernet + IPv4 + OSPF. We have no OSPF decoder, which is the point: the
+ * payload has to survive as bytes rather than as a crash or a blank pane. This
+ * used to be a TCP segment, until TCP got a decoder — an imported capture
+ * carries protocols we have not implemented, and always will.
  */
-function tcpFrame(): Uint8Array {
-  const tcp = new ByteWriter()
-    .u16be(443) // source port
-    .u16be(50_000) // destination port
-    .u32be(0x0001_0000) // sequence number
-    .u32be(0)
-    .u16be(0x5002) // data offset 5, SYN
-    .u16be(64_240)
-    .u16be(0) // checksum: not ours to compute, and not checked here
-    .u16be(0)
+const OSPF_PROTOCOL = 89
+
+function undecodedFrame(): Uint8Array {
+  const ospf = new ByteWriter()
+    .u8(2) // version
+    .u8(1) // type: Hello
+    .u16be(44) // packet length
+    .u32be(0x0a00_0001) // router id
+    .u32be(0) // area id
+    .u16be(0) // checksum
+    .u16be(0) // auth type
     .finish()
 
   return encodeEthernet({
@@ -68,10 +71,10 @@ function tcpFrame(): Uint8Array {
     payload: encodeIpv4({
       src: '10.0.0.1',
       dst: '10.0.0.2',
-      protocol: 6,
+      protocol: OSPF_PROTOCOL,
       ttl: 64,
       identification: 0x1234,
-      payload: tcp,
+      payload: ospf,
     }),
   })
 }
@@ -126,16 +129,16 @@ describe('importing a capture', () => {
   })
 
   it('shows a protocol it has no decoder for as raw bytes, still linked to the hex', async () => {
-    await importBytes(writePcap([{ frame: tcpFrame(), tMs: 0 }]), 'tcp.pcap')
+    await importBytes(writePcap([{ frame: undecodedFrame(), tMs: 0 }]), 'ospf.pcap')
 
     await waitFor(() => expect(document.querySelector('.hex-grid')).toBeTruthy())
     const tree = screen.getByRole('tree')
     expect(within(tree).getByText('Payload (no decoder)')).toBeTruthy()
 
-    // A warning, not an error: the frame decoded fine, we simply stop at TCP.
+    // A warning, not an error: the frame decoded fine, we simply stop at OSPF.
     const problems = document.querySelectorAll('.problem')
     expect(problems).toHaveLength(1)
-    expect(problems[0]?.textContent).toMatch(/No decoder for IP protocol 6/)
+    expect(problems[0]?.textContent).toMatch(/No decoder for IP protocol 89/)
     expect(document.querySelectorAll('.problem.is-error')).toHaveLength(0)
   })
 

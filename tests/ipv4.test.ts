@@ -161,9 +161,12 @@ describe('IPv4', () => {
   })
 
   it('shows an unknown payload protocol as raw bytes instead of guessing', () => {
-    const packet = decodeFrame(ipv4Frame(6))
+    // 89 is OSPF, which this build does not decode. It has to be a protocol
+    // number no dispatch table claims — pick one we later implement and this
+    // test stops testing anything.
+    const packet = decodeFrame(ipv4Frame(89))
     expect(packet.problems.map((problem) => problem.severity)).toEqual(['warning'])
-    expect(packet.problems[0]?.message).toContain('No decoder for IP protocol 6')
+    expect(packet.problems[0]?.message).toContain('No decoder for IP protocol 89')
     const data = findField(packet.tree, 'data')
     expect(data?.byteStart).toBe(ETH_HEADER_BYTES + IPV4_HEADER_BYTES)
     // Bounded by IPv4's own total length: the Ethernet padding after it belongs

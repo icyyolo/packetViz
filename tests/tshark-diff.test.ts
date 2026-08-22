@@ -19,23 +19,28 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
-import { leafFields, type FieldNode } from '../src/core/field.ts'
+import { findField, leafFields, type FieldNode } from '../src/core/field.ts'
 import { writePcap } from '../src/core/pcap/write.ts'
 import { decodeFrame } from '../src/core/registry.ts'
 import { arpSpoofingScenario } from '../src/lessons/arp-spoofing/scenario.ts'
 import { dhcpScenario } from '../src/lessons/dhcp/scenario.ts'
+import { dnsScenario } from '../src/lessons/dns/scenario.ts'
+import { pingScenario } from '../src/lessons/ping/scenario.ts'
+import { tcpHandshakeScenario } from '../src/lessons/tcp-handshake/scenario.ts'
 import type { PcapPacket } from '../src/core/pcap/write.ts'
 import { arpExchange, arpRequestFrame, dhcpExchange, lessonCapture } from './fixtures.ts'
 import {
   FIELD_MAP,
   OPTION_MAP,
   OPTION_STRUCTURE,
+  TCP_OPTION_STRUCTURE,
   flattenLayers,
   isMappedOptionValue,
   optionCode,
   optionNodes,
   ourOptionValue,
   ourValue,
+  tcpOptionNodes,
   theirValue,
   tsharkAvailable,
 } from './tshark.ts'
@@ -99,6 +104,69 @@ describe('Wireshark differential', () => {
     [],
     'eth:ethertype:ip:udp:dhcp',
   )
+
+  // Phase 9's three protocols, each as the lesson exports it.
+  differential(
+    'on the ping lesson capture',
+    'ping.pcap',
+    lessonCapture(pingScenario),
+    [],
+    // The echo payload means nothing to ICMP, so Wireshark ends the chain with
+    // the generic data dissector rather than with icmp.
+    'eth:ethertype:ip:icmp:data',
+  )
+
+  differential(
+    'on the TCP handshake lesson capture',
+    'tcp-handshake.pcap',
+    lessonCapture(tcpHandshakeScenario),
+    // Wireshark's TCP dissector comments on a handshake as it goes. These are
+    // notes about the conversation, not complaints about the packets — pinned
+    // here so that a real complaint would show up as an unexpected row.
+    [
+      '1\tConnection establish request (SYN): server port 80',
+      '2\tConnection establish acknowledge (SYN+ACK): server port 80',
+    ],
+    'eth:ethertype:ip:tcp',
+  )
+
+  differential(
+    'on the DNS lesson capture',
+    'dns.pcap',
+    lessonCapture(dnsScenario),
+    [],
+    'eth:ethertype:ip:udp:dns',
+  )
+
+  /**
+   * The compression pointer, checked as the thing it is rather than as a value.
+   *
+   * The answer's name is two bytes; the name is nineteen. Asserting that the
+   * field is two bytes long AND that both decoders read the same name out of it
+   * is the only way to show we followed the pointer rather than got lucky.
+   */
+  it.skipIf(!available)('reads a compressed DNS name as a pointer, not as bytes', () => {
+    const packets = lessonCapture(dnsScenario)
+    const response = decodeFrame(packets[1]!.frame)
+    const name = findField(response.tree, 'dns.resp.name')
+
+    expect(name?.byteLength).toBe(2)
+    expect((name?.raw[0] ?? 0) & 0xc0).toBe(0xc0)
+    expect(name?.value).toBe('files.corp.internal')
+    expect(name?.name).toContain('compressed')
+
+    const dir = mkdtempSync(join(tmpdir(), 'packetviz-dns-'))
+    const file = join(dir, 'dns.pcap')
+    writeFileSync(file, writePcap(packets))
+    const theirs = execFileSync('tshark', ['-r', file, '-T', 'fields', '-e', 'dns.resp.name'], {
+      encoding: 'utf8',
+    })
+      .split('\n')
+      .filter((line) => line.length > 0)
+    rmSync(dir, { recursive: true, force: true })
+
+    expect(theirs).toEqual(['files.corp.internal'])
+  })
 
   it.skipIf(!available)('sees the lesson as a DISCOVER, OFFER, REQUEST, ACK exchange', () => {
     const dir = mkdtempSync(join(tmpdir(), 'packetviz-dora-'))
@@ -175,7 +243,17 @@ function differential(
     const tshark = (args: string[]): string =>
       execFileSync(
         'tshark',
-        ['-r', file, '-o', 'ip.check_checksum:TRUE', '-o', 'udp.check_checksum:TRUE', ...args],
+        [
+          '-r',
+          file,
+          '-o',
+          'ip.check_checksum:TRUE',
+          '-o',
+          'udp.check_checksum:TRUE',
+          '-o',
+          'tcp.check_checksum:TRUE',
+          ...args,
+        ],
         { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 },
       )
 
@@ -224,7 +302,12 @@ function differential(
      * have given us and is therefore also a failure here.
      */
     it('has every checksum verified as good by Wireshark itself', () => {
-      for (const name of ['ip.checksum.status', 'udp.checksum.status']) {
+      for (const name of [
+        'ip.checksum.status',
+        'udp.checksum.status',
+        'tcp.checksum.status',
+        'icmp.checksum.status',
+      ]) {
         for (const statuses of occurrences(name)) {
           for (const status of statuses) {
             expect(status, `${name} on a packet in ${filename}`).toBe('1')
@@ -253,6 +336,7 @@ function differential(
           if (node === undefined) continue
 
           const raw = theirs.get(mapping.theirs)
+          if (raw === undefined && mapping.sometimesAbsent !== undefined) continue
           expect(raw, `packet ${index}: tshark emitted no ${mapping.theirs}`).toBeDefined()
 
           expect(
@@ -276,7 +360,11 @@ function differential(
       }
 
       const unmapped = Array.from(emitted).filter(
-        (id) => !mapped.has(id) && !OPTION_STRUCTURE.test(id) && !isMappedOptionValue(id),
+        (id) =>
+          !mapped.has(id) &&
+          !OPTION_STRUCTURE.test(id) &&
+          !TCP_OPTION_STRUCTURE.test(id) &&
+          !isMappedOptionValue(id),
       )
       expect(
         unmapped,
@@ -320,6 +408,39 @@ function differential(
       })
 
       if (compared > 0) process.stdout.write(`  compared ${compared} DHCP options against tshark\n`)
+    })
+
+    /**
+     * The TCP option list, compared as a list — same reasoning as the DHCP one.
+     * tshark repeats `tcp.option_kind` once per option and `tcp.option_len` only
+     * for the ones that have a length, which is itself a fact about the format
+     * worth pinning: NOP and END carry no length byte at all.
+     */
+    it('agrees with tshark on the TCP option list', () => {
+      const kinds = occurrences('tcp.option_kind')
+      const lengths = occurrences('tcp.option_len')
+
+      let compared = 0
+      packets.forEach((packet, index) => {
+        const options = tcpOptionNodes(decodeFrame(packet.frame))
+        if (options.length === 0) return
+
+        expect(
+          options.map((node) => Number(node.id.slice('tcp.opt.'.length))).join(','),
+          `packet ${index} option kinds`,
+        ).toBe((kinds[index] ?? []).join(','))
+
+        expect(
+          options
+            .filter((node) => node.children !== undefined)
+            .map((node) => node.byteLength)
+            .join(','),
+          `packet ${index} option lengths`,
+        ).toBe((lengths[index] ?? []).join(','))
+        compared += options.length
+      })
+
+      if (compared > 0) process.stdout.write(`  compared ${compared} TCP options against tshark\n`)
     })
 
     it('agrees with tshark on every option value it registers a name for', () => {

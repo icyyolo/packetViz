@@ -10,7 +10,15 @@ import { findField } from '../src/core/field.ts'
 import { decodeFrame } from '../src/core/registry.ts'
 import { ARP_OPCODE, encodeArp } from '../src/core/protocols/arp.ts'
 import { BROADCAST_MAC, ETHER_TYPE, encodeEthernet } from '../src/core/protocols/ethernet.ts'
+import { buildDnsResponseFrame } from '../src/core/protocols/dns.ts'
+import { ICMP_TYPE, encodeIcmpEcho } from '../src/core/protocols/icmp.ts'
 import { IP_PROTOCOL, encodeIpv4 } from '../src/core/protocols/ipv4.ts'
+import {
+  TCP_OPTION,
+  encodeTcp,
+  optionMss,
+  optionWindowScale,
+} from '../src/core/protocols/tcp.ts'
 import { encodeUdp } from '../src/core/protocols/udp.ts'
 import {
   DHCP_CLIENT_PORT,
@@ -176,6 +184,186 @@ describe('DHCP over UDP over IPv4 round-trip', () => {
         expect(value('dhcp.opt.51.value')).toBe(`${input.leaseSeconds} seconds`)
         expect(value('dhcp.opt.1.value')).toBe(input.subnetMask)
         expect(packet.summary).toBe(`DHCP ${DHCP_MESSAGE_TYPE_NAMES[input.messageType]}`)
+      }),
+      { numRuns: RUNS },
+    )
+  })
+})
+
+/**
+ * Phase 9's three protocols. Each one is generated with random values in every
+ * field the encoder takes, and every value is read back out of the bytes by a
+ * decoder that shares no code with the encoder except the field-id constants.
+ */
+
+const echoArb = fc.record({
+  identifier: fc.integer({ min: 0, max: 0xffff }),
+  sequence: fc.integer({ min: 0, max: 0xffff }),
+  payload: fc.uint8Array({ minLength: 0, maxLength: 120 }),
+  srcIp: ipv4Arb,
+  dstIp: ipv4Arb,
+  srcMac: macArb,
+  dstMac: macArb,
+})
+
+describe('ICMP over IPv4 round-trip', () => {
+  it('decodes back every value the encoders wrote, checksum included', () => {
+    fc.assert(
+      fc.property(echoArb, fc.constantFrom(ICMP_TYPE.ECHO_REQUEST, ICMP_TYPE.ECHO_REPLY), (input, type) => {
+        const message = encodeIcmpEcho({
+          type,
+          identifier: input.identifier,
+          sequence: input.sequence,
+          payload: input.payload,
+        })
+        const frame = encodeEthernet({
+          dst: input.dstMac,
+          src: input.srcMac,
+          etherType: ETHER_TYPE.IPV4,
+          payload: encodeIpv4({
+            src: input.srcIp,
+            dst: input.dstIp,
+            protocol: IP_PROTOCOL.ICMP,
+            ttl: 64,
+            identification: input.sequence,
+            payload: message,
+          }),
+        })
+
+        const packet = decodeFrame(frame)
+        const value = (id: string): string | undefined => findField(packet.tree, id)?.value
+
+        expect(packet.problems).toEqual([])
+        expect(value('icmp.checksum')).toContain('[correct]')
+        expect(value('icmp.seq')).toBe(String(input.sequence))
+        expect(findField(packet.tree, 'icmp.type')?.raw[0]).toBe(type)
+        // The payload is echoed back byte for byte, and the decoder finds
+        // exactly as many of them as the encoder wrote — which it can only know
+        // from IPv4's total length, since ICMP has no length of its own.
+        expect(findField(packet.tree, 'icmp.data')?.byteLength ?? 0).toBe(input.payload.length)
+      }),
+      { numRuns: RUNS },
+    )
+  })
+})
+
+const tcpArb = fc.record({
+  srcPort: fc.integer({ min: 0, max: 0xffff }),
+  dstPort: fc.integer({ min: 0, max: 0xffff }),
+  seq: fc.integer({ min: 0, max: 0xffffffff }),
+  ack: fc.integer({ min: 0, max: 0xffffffff }),
+  flags: fc.integer({ min: 0, max: 0xff }),
+  window: fc.integer({ min: 0, max: 0xffff }),
+  mss: fc.integer({ min: 0, max: 0xffff }),
+  scale: fc.integer({ min: 0, max: 14 }),
+  payload: fc.uint8Array({ minLength: 0, maxLength: 100 }),
+  srcIp: ipv4Arb,
+  dstIp: ipv4Arb,
+  mac: macArb,
+})
+
+describe('TCP over IPv4 round-trip', () => {
+  it('decodes back every value the encoders wrote, options and checksum included', () => {
+    fc.assert(
+      fc.property(tcpArb, (input) => {
+        const segment = encodeTcp({
+          srcPort: input.srcPort,
+          dstPort: input.dstPort,
+          seq: input.seq,
+          ack: input.ack,
+          flags: input.flags,
+          window: input.window,
+          options: [
+            { kind: TCP_OPTION.MSS, value: optionMss(input.mss) },
+            { kind: TCP_OPTION.NOP, value: new Uint8Array(0) },
+            { kind: TCP_OPTION.WINDOW_SCALE, value: optionWindowScale(input.scale) },
+          ],
+          payload: input.payload,
+          srcIp: input.srcIp,
+          dstIp: input.dstIp,
+        })
+        const frame = encodeEthernet({
+          dst: input.mac,
+          src: input.mac,
+          etherType: ETHER_TYPE.IPV4,
+          payload: encodeIpv4({
+            src: input.srcIp,
+            dst: input.dstIp,
+            protocol: IP_PROTOCOL.TCP,
+            ttl: 64,
+            identification: 1,
+            payload: segment,
+          }),
+        })
+
+        const packet = decodeFrame(frame)
+        const value = (id: string): string | undefined => findField(packet.tree, id)?.value
+        const raw = (id: string): number =>
+          (findField(packet.tree, id)?.raw ?? new Uint8Array()).reduce((sum, b) => sum * 256 + b, 0)
+
+        expect(packet.problems).toEqual([])
+        expect(value('tcp.checksum')).toContain('[correct]')
+        expect(raw('tcp.seq')).toBe(input.seq)
+        expect(raw('tcp.ack')).toBe(input.ack)
+        expect(value('tcp.opt.2.value')).toBe(`${input.mss} bytes`)
+        expect(value('tcp.opt.3.value')).toContain(`shift ${input.scale}`)
+        // Every flag bit read back one at a time reassembles the byte written.
+        // Read from the decoded value rather than from `raw`: a one-bit field's
+        // raw IS the whole flags byte, which is the point of `bitOffset`.
+        const flags = ['fin', 'syn', 'reset', 'push', 'ack', 'urg', 'ecn', 'cwr'].reduce(
+          (sum, name, index) => sum + (value(`tcp.flags.${name}`) === 'Set' ? 1 << index : 0),
+          0,
+        )
+        expect(flags).toBe(input.flags)
+      }),
+      { numRuns: RUNS },
+    )
+  })
+})
+
+/** Label alphabet: letters and digits, so a generated name is a plausible one. */
+const labelArb = fc
+  .array(fc.integer({ min: 0, max: 35 }), { minLength: 1, maxLength: 20 })
+  .map((codes) => codes.map((code) => 'abcdefghijklmnopqrstuvwxyz0123456789'[code]).join(''))
+
+const dnsArb = fc.record({
+  id: fc.integer({ min: 0, max: 0xffff }),
+  labels: fc.array(labelArb, { minLength: 1, maxLength: 4 }),
+  address: ipv4Arb,
+  ttl: fc.integer({ min: 0, max: 0xffffffff }),
+  srcIp: ipv4Arb,
+  dstIp: ipv4Arb,
+  mac: macArb,
+  ephemeral: fc.integer({ min: 1024, max: 0xffff }),
+})
+
+describe('DNS over UDP round-trip', () => {
+  it('reads the same name out of the labels and out of the pointer to them', () => {
+    fc.assert(
+      fc.property(dnsArb, (input) => {
+        const hostname = input.labels.join('.')
+        const frame = buildDnsResponseFrame(
+          { mac: input.mac, ip: input.srcIp },
+          { mac: input.mac, ip: input.dstIp },
+          { ephemeral: input.ephemeral, id: input.id },
+          hostname,
+          { address: input.address, ttl: input.ttl },
+        )
+
+        const packet = decodeFrame(frame)
+        const value = (id: string): string | undefined => findField(packet.tree, id)?.value
+
+        expect(packet.problems).toEqual([])
+        expect(value('udp.checksum')).toContain('[correct]')
+        expect(value('dns.id')).toBe(`0x${input.id.toString(16).padStart(4, '0')}`)
+        expect(value('dns.a')).toBe(input.address)
+        expect(value('dns.resp.ttl')).toBe(`${input.ttl} seconds`)
+
+        // The question's name is in its own bytes; the answer's is a pointer to
+        // them. Both must read as the same name, which is the whole claim.
+        expect(value('dns.qry.name')).toBe(hostname)
+        expect(value('dns.resp.name')).toBe(hostname)
+        expect(findField(packet.tree, 'dns.resp.name')?.byteLength).toBe(2)
       }),
       { numRuns: RUNS },
     )

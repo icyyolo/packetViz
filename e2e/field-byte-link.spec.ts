@@ -75,10 +75,44 @@ const ANCHORS: Record<string, { id: string; start: number; length: number }[]> =
     { id: 'dhcp.cookie', start: 278, length: 4 },
     { id: 'dhcp.opt.53', start: 282, length: 3 },
   ],
+  // ICMP, RFC 792: type, code, checksum, then the identifier and sequence
+  // number that only the echo messages define. IPv4 ends at 34, so the echo
+  // data starts at 34 + 8.
+  ping: [
+    { id: 'ip.ttl', start: 22, length: 1 },
+    { id: 'icmp.type', start: 34, length: 1 },
+    { id: 'icmp.ident', start: 38, length: 2 },
+    { id: 'icmp.seq', start: 40, length: 2 },
+    { id: 'icmp.data', start: 42, length: 32 },
+  ],
+  // TCP, RFC 9293 §3.1: ports, then the two 32-bit numbers, then the byte the
+  // flags share with the data offset, and the options from byte 20 of the
+  // header. The SYN's first option is the maximum segment size.
+  'tcp-handshake': [
+    { id: 'tcp.srcport', start: 34, length: 2 },
+    { id: 'tcp.seq', start: 38, length: 4 },
+    { id: 'tcp.ack', start: 42, length: 4 },
+    // A one-bit field highlights the byte it lives in — the second of the two
+    // that hold the data offset and the flags.
+    { id: 'tcp.flags.syn', start: 47, length: 1 },
+    { id: 'tcp.window_size_value', start: 48, length: 2 },
+    { id: 'tcp.opt.2', start: 54, length: 4 },
+  ],
+  // DNS, RFC 1035 §4.1: the header is twelve bytes from 42, so the question's
+  // name starts at 54 and is one length byte per label plus the labels plus a
+  // terminating zero — 21 bytes for files.corp.internal.
+  dns: [
+    { id: 'udp.srcport', start: 34, length: 2 },
+    { id: 'dns.id', start: 42, length: 2 },
+    { id: 'dns.count.queries', start: 46, length: 2 },
+    { id: 'dns.qry.name', start: 54, length: 21 },
+    { id: 'dns.qry.type', start: 75, length: 2 },
+    { id: 'dns.qry.class', start: 77, length: 2 },
+  ],
 }
 
 function anchorsFor(slug: string): { id: string; start: number; length: number }[] {
-  const stack = slug.startsWith('arp') ? ANCHORS.arp : ANCHORS.dhcp
+  const stack = slug.startsWith('arp') ? ANCHORS.arp : (ANCHORS[slug] ?? ANCHORS.dhcp)
   return [...(ANCHORS.common ?? []), ...(stack ?? [])]
 }
 
@@ -110,8 +144,16 @@ for (const lesson of LESSONS) {
       // place would leave the page showing the packet it already had.
       await page.locator('.packet-tab').nth(index).click()
 
+      // A field id can legitimately repeat within one packet — a TCP header
+      // carries three No-Operation options, and a malformed DHCP message can
+      // repeat an option code. The rows are in wire order, so the nth row with
+      // an id is the nth node with it; clicking `.first()` every time would
+      // check the first one three times and the other two never.
+      const seen = new Map<string, number>()
       for (const node of leafFields(packet.tree)) {
-        await page.locator(`[data-field-id="${node.id}"]`).first().click()
+        const occurrence = seen.get(node.id) ?? 0
+        seen.set(node.id, occurrence + 1)
+        await page.locator(`[data-field-id="${node.id}"]`).nth(occurrence).click()
 
         const expected = Array.from({ length: node.byteLength }, (_x, i) => node.byteStart + i)
         expect(await selectedOffsets(page), `${lesson.slug} packet ${index} field ${node.id}`).toEqual(

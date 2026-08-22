@@ -95,16 +95,27 @@ describe('the reference pages', () => {
     expect(screen.getByRole('region', { name: 'Message types (option 53)' })).toBeTruthy()
   })
 
-  it('refuses to invent a page for a protocol with no decoder', () => {
+  it('renders the dictionaries a hand-written loop owns for TCP and DNS too', () => {
     renderAt('/reference/tcp')
-    expect(screen.getByRole('heading', { level: 1 }).textContent).toContain('tcp')
+    expect(screen.getByRole('region', { name: 'Option kinds' })).toBeTruthy()
+
+    cleanup()
+    renderAt('/reference/dns')
+    // Record types and classes are read by the record walk, not by a FieldSpec.
+    expect(screen.getByRole('region', { name: 'Record types' })).toBeTruthy()
+    expect(screen.getByRole('region', { name: 'Classes' })).toBeTruthy()
+  })
+
+  it('refuses to invent a page for a protocol with no decoder', () => {
+    renderAt('/reference/tls')
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toContain('tls')
     expect(screen.getByText(/no decoder for it/i)).toBeTruthy()
   })
 
   it('indexes implemented protocols as links and unimplemented ones as inert cards', () => {
     renderAt('/reference')
     expect(screen.getByRole('link', { name: /IPv4/ })).toBeTruthy()
-    expect(screen.queryByRole('link', { name: /^TCP/ })).toBeNull()
+    expect(screen.queryByRole('link', { name: /^TLS/ })).toBeNull()
     expect(screen.getAllByText('not implemented').length).toBe(3)
   })
 })
@@ -115,8 +126,10 @@ describe('the concept map', () => {
 
     expect(screen.getByRole('button', { name: /Ethernet II/ }).hasAttribute('disabled')).toBe(false)
     expect(screen.getByRole('button', { name: /DHCP/ }).hasAttribute('disabled')).toBe(false)
-    expect(screen.getByRole('button', { name: /TCP/ }).hasAttribute('disabled')).toBe(true)
-    expect(screen.getByRole('button', { name: /DNS/ }).hasAttribute('disabled')).toBe(true)
+    expect(screen.getByRole('button', { name: /^TCP/ }).hasAttribute('disabled')).toBe(false)
+    expect(screen.getByRole('button', { name: /^DNS/ }).hasAttribute('disabled')).toBe(false)
+    expect(screen.getByRole('button', { name: /^TLS/ }).hasAttribute('disabled')).toBe(true)
+    expect(screen.getByRole('button', { name: /^IPv6/ }).hasAttribute('disabled')).toBe(true)
   })
 
   it('filters the lesson cards to the ones that put a protocol on the wire', async () => {
@@ -128,7 +141,7 @@ describe('the concept map', () => {
     const lessons = document.querySelectorAll('.cards .card:not(.card-secondary)')
     const lit = Array.from(lessons).filter((card) => !card.classList.contains('is-dimmed'))
 
-    expect(lessons.length).toBe(3)
+    expect(lessons.length).toBe(6)
     expect(lit).toHaveLength(1)
     expect(lit[0]?.querySelector('h2')?.textContent).toMatch(/DHCP/)
   })

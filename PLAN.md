@@ -780,6 +780,59 @@ conventions, ordered by value:
 definition of done below. Breadth before depth is the specific failure mode this
 project exists to avoid.
 
+> **Status: items 1–3 built (2026-08-22).** The gate held first: ARP, ARP
+> spoofing and DHCP had cleared all eight lesson criteria, so the three
+> protocols were built in order of what they cost — ICMP first as the smallest
+> end-to-end proof of the pipeline, then TCP, then DNS. Item 4 was not taken up.
+> Each landed as a codec, a lesson, a differential capture, round-trip and fuzz
+> coverage, and a generated reference page. Six findings worth keeping:
+>
+> 1. **Two protocols have no length field, and it is load-bearing.** ICMP and
+>    TCP both take their message length from IPv4, and both of their checksums
+>    cover exactly that many bytes. `DecodeContext` gained a `length`, filled in
+>    by the dispatch loop from a number it had already computed. `tests/icmp.test.ts`
+>    pins the consequence: told nothing, the decoder would checksum Ethernet's
+>    padding into a ping and call a good checksum bad.
+> 2. **Wireshark's TCP sequence numbers are relative, and ours are not.**
+>    `tcp.seq` in tshark is the number minus that side's initial value — a fact
+>    about the capture, not about the packet — so our `tcp.seq` maps to its
+>    `tcp.seq_raw`. Subtracting an initial sequence number inside the decoder
+>    would mean holding state outside the buffer, which is the one thing this
+>    design forbids; the lesson narration explains the difference instead.
+> 3. **A DNS name is the first field whose value is not in the field.** A
+>    compressed name is two bytes meaning "the name at offset 12", so it is also
+>    the only mapping compared against our decoded value rather than raw bytes —
+>    comparing two pointers would prove nothing about whether both sides
+>    followed them to the same place.
+> 4. **The pointer loop is the sharpest test the totality contract has had.**
+>    Nothing in RFC 1035 stops a name pointing at itself, so `readName` keeps a
+>    visited set and an iteration budget bounded by the message size. Named fuzz
+>    cases cover a self-pointer, a two-pointer cycle, a pointer out of the
+>    message, and a record length that lies.
+> 5. **The exhaustive sweep found a real UI bug, in code that predates Phase 9.**
+>    Every real TCP SYN carries three No-Operation options, all with the id
+>    `tcp.opt.1`, and selection stored an id alone — so clicking the third
+>    highlighted the first one's byte. Selection is now an id *and* an
+>    occurrence; deep links still carry only the id and resolve to the first.
+>    `tests/link.dom.test.tsx` holds the regression test, and the e2e sweep now
+>    clicks the nth matching row rather than the first.
+> 6. **The concept map had run out of things not to implement.** With ICMP, TCP
+>    and DNS built, every protocol in the catalog was implemented and the map
+>    could no longer show where support stops. IPv6, TLS and HTTP were added as
+>    catalog-only entries — named, greyed out, and honest.
+>
+> Wireshark disagreed about one more thing and was right to: it hides the DNS
+> flag bits that only mean something in a response, so a query carries no
+> `dns.flags.rcode`. We show them, because the bits are in the byte. Those four
+> mappings now carry a `sometimesAbsent` reason and are skipped only for the
+> packets tshark left them out of — the stale-mapping check still fails if
+> tshark never emits one anywhere.
+>
+> Verified: 338 unit tests across 28 files (six tshark differentials among them —
+> ping 88 field comparisons, the handshake 109 plus 12 options, DNS 78), 45
+> Playwright tests (575 field-to-byte and 397 byte-to-field assertions), lint and
+> build clean, and all 10 PNGs byte-identical across two `npm run media` runs.
+
 ---
 
 ## Definition of done
@@ -809,14 +862,18 @@ A lesson is done when **all eight** hold:
 - [ ] Live at `https://icyyolo.github.io/packetViz/`, CI green on `main`.
       *(Waiting on a push, and on GitHub Settings -> Pages -> Source = "GitHub
       Actions".)*
-- [x] ARP and DHCP lessons both meet all eight lesson criteria.
+- [x] ARP and DHCP lessons both meet all eight lesson criteria — and so do the
+      three Phase 9 lessons (ping, the TCP handshake, DNS), which were held to
+      the same eight before being counted as done.
 - [x] The tshark mapping table covers **100% of leaf field ids** our decoder
       emits for both lessons, asserted by the coverage check — not a sampled
       subset.
 - [ ] Both exported `.pcap` files open in the Wireshark GUI with zero malformed
       packets and zero checksum errors. *(`tshark` asserts exactly this on every
-      commit; opening the three files in the GUI is the one check a human still
-      has to do.)*
+      commit; opening the six exported files in the GUI is the one check a human
+      still has to do. The TCP handshake will show two blue informational rows —
+      Wireshark commenting on the SYN and SYN-ACK — which the differential pins
+      as expected rather than treating as a defect.)*
 - [x] A `.pcap` produced elsewhere (not by this project) containing ARP or DHCP
       can be imported and viewed in the same four-layer viewer.
 - [x] Round-trip property tests pass at 1000+ generated cases for the full
@@ -834,7 +891,8 @@ A lesson is done when **all eight** hold:
       the ARP opcode flip is covered by an E2E test.
 - [x] A 20,000-packet pcap imports without hanging, showing the first 5,000 with
       a clear notice.
-- [x] `#/reference/:protocol` exists for every implemented protocol, is generated
+- [x] `#/reference/:protocol` exists for every implemented protocol — eight of
+      them since Phase 9 — is generated
       entirely from the `FieldSpec` tables (adding a field to a spec changes the
       page with no edit to page code), and every field has a description and a
       working "see it live" deep link.

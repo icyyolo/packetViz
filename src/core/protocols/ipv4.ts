@@ -23,12 +23,14 @@ export const IPV4_VERSION = 4
 export const IPV4_MIN_IHL = 5
 
 export const IP_PROTOCOL = {
+  ICMP: 1,
+  TCP: 6,
   UDP: 17,
 } as const
 
 export const IP_PROTOCOL_NAMES: Record<number, string> = {
-  1: 'ICMP',
-  6: 'TCP',
+  [IP_PROTOCOL.ICMP]: 'ICMP',
+  [IP_PROTOCOL.TCP]: 'TCP',
   [IP_PROTOCOL.UDP]: 'UDP',
 }
 

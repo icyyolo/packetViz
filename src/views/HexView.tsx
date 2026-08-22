@@ -61,10 +61,11 @@ export type HexViewProps = {
 }
 
 export function HexView({ packet, onEditByte, baseline }: HexViewProps) {
-  const { selectedFieldId, hoveredFieldId, selectField, hoverField } = useSelection()
+  const { selectedFieldId, selectedOccurrence, hoveredFieldId, hoveredOccurrence, selectField, hoverField } =
+    useSelection()
   const frame = packet.frame
-  const selected = spanOf(packet, selectedFieldId)
-  const hovered = spanOf(packet, hoveredFieldId)
+  const selected = spanOf(packet, selectedFieldId, selectedOccurrence)
+  const hovered = spanOf(packet, hoveredFieldId, hoveredOccurrence)
   const sections = sectionsOf(packet)
 
   const [requestedFocus, setFocusOffset] = useState(0)
@@ -94,8 +95,8 @@ export function HexView({ packet, onEditByte, baseline }: HexViewProps) {
 
   const selectAt = useCallback(
     (offset: number) => {
-      const node = fieldAtOffset(packet, offset)
-      selectField(node?.id ?? null)
+      const found = fieldAtOffset(packet, offset)
+      selectField(found?.node.id ?? null, found?.occurrence ?? 0)
     },
     [packet, selectField],
   )
@@ -259,7 +260,10 @@ export function HexView({ packet, onEditByte, baseline }: HexViewProps) {
                       selectAt(offset)
                     }}
                     onFocus={() => setFocusOffset(offset)}
-                    onMouseEnter={() => hoverField(fieldAtOffset(packet, offset)?.id ?? null)}
+                    onMouseEnter={() => {
+                      const found = fieldAtOffset(packet, offset)
+                      hoverField(found?.node.id ?? null, found?.occurrence ?? 0)
+                    }}
                   >
                     {typing ? `${pending.nibble.toString(16)}_` : byte.toString(16).padStart(2, '0')}
                   </div>

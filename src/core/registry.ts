@@ -36,7 +36,16 @@ import {
   DHCP_SPECS,
   decodeDhcp,
 } from './protocols/dhcp.ts'
+import {
+  DNS_CLASS_NAMES,
+  DNS_PORT,
+  DNS_SPECS,
+  DNS_TYPE_NAMES,
+  decodeDns,
+} from './protocols/dns.ts'
+import { ICMP_SPECS, ICMP_TYPE_NAMES, decodeIcmp } from './protocols/icmp.ts'
 import { IPV4_SPECS, IP_PROTOCOL, decodeIpv4, type Ipv4Decode } from './protocols/ipv4.ts'
+import { TCP_OPTION_NAMES, TCP_PORT_NAMES, TCP_SPECS, decodeTcp } from './protocols/tcp.ts'
 import { UDP_SPECS, decodeUdp, type UdpDecode } from './protocols/udp.ts'
 
 /**
@@ -47,6 +56,13 @@ import { UDP_SPECS, decodeUdp, type UdpDecode } from './protocols/udp.ts'
 export type DecodeContext = {
   srcIp: Uint8Array | undefined
   dstIp: Uint8Array | undefined
+  /**
+   * How many bytes the enclosing layer says its payload is. ICMP and TCP both
+   * need it: neither carries a length of its own, so "how long is this message"
+   * is a fact only IPv4 knows — and both of their checksums cover exactly that
+   * many bytes. Filled in by the dispatch loop, which already computed it.
+   */
+  length?: number
 }
 
 const NO_CONTEXT: DecodeContext = { srcIp: undefined, dstIp: undefined }
@@ -139,6 +155,27 @@ const DHCP_ENTRY: ProtocolEntry = {
   specs: DHCP_SPECS,
 }
 
+const ICMP_ENTRY: ProtocolEntry = {
+  id: 'icmp',
+  name: 'ICMP',
+  decode: decodeIcmp,
+  specs: ICMP_SPECS,
+}
+
+const TCP_ENTRY: ProtocolEntry = {
+  id: 'tcp',
+  name: 'TCP',
+  decode: decodeTcp,
+  specs: TCP_SPECS,
+}
+
+const DNS_ENTRY: ProtocolEntry = {
+  id: 'dns',
+  name: 'DNS',
+  decode: decodeDns,
+  specs: DNS_SPECS,
+}
+
 const ARP_ENTRY: ProtocolEntry = {
   id: 'arp',
   name: 'ARP',
@@ -157,17 +194,32 @@ export const BY_ETHER_TYPE: ReadonlyMap<number, ProtocolEntry> = new Map([
 ])
 
 export const BY_IP_PROTOCOL: ReadonlyMap<number, ProtocolEntry> = new Map([
+  [IP_PROTOCOL.ICMP, ICMP_ENTRY],
+  [IP_PROTOCOL.TCP, TCP_ENTRY],
   [IP_PROTOCOL.UDP, UDP_ENTRY],
 ])
 
 export const BY_UDP_PORT: ReadonlyMap<number, ProtocolEntry> = new Map([
   [DHCP_SERVER_PORT, DHCP_ENTRY],
   [DHCP_CLIENT_PORT, DHCP_ENTRY],
+  [DNS_PORT, DNS_ENTRY],
 ])
 
 /** Every protocol this build can decode, keyed by the id its container node carries. */
 export const BY_ID: ReadonlyMap<string, ProtocolEntry> = new Map(
-  [ETHERNET_ENTRY, ARP_ENTRY, IPV4_ENTRY, UDP_ENTRY, DHCP_ENTRY].map((entry) => [entry.id, entry]),
+  [
+    ETHERNET_ENTRY,
+    ARP_ENTRY,
+    IPV4_ENTRY,
+    ICMP_ENTRY,
+    TCP_ENTRY,
+    UDP_ENTRY,
+    DHCP_ENTRY,
+    DNS_ENTRY,
+  ].map((entry) => [
+    entry.id,
+    entry,
+  ]),
 )
 
 
@@ -233,12 +285,21 @@ const CATALOG: readonly CatalogEntry[] = [
     reference: 'RFC 791',
   },
   {
+    id: 'ipv6',
+    name: 'IPv6',
+    layer: 3,
+    carriedBy: 'eth',
+    blurb: 'The addressing that replaces IPv4, with no header checksum and no fragmentation by routers.',
+    reference: 'RFC 8200',
+  },
+  {
     id: 'icmp',
     name: 'ICMP',
     layer: 3,
     carriedBy: 'ip',
     blurb: 'Error and diagnostic messages for IP — what ping is made of.',
     reference: 'RFC 792',
+    dictionaries: [{ title: 'Message types', values: ICMP_TYPE_NAMES }],
   },
   {
     id: 'tcp',
@@ -247,6 +308,26 @@ const CATALOG: readonly CatalogEntry[] = [
     carriedBy: 'ip',
     blurb: 'Ordered, reliable byte streams: sequence numbers, acknowledgements and windows.',
     reference: 'RFC 9293',
+    dictionaries: [
+      { title: 'Option kinds', values: TCP_OPTION_NAMES },
+      { title: 'Well-known ports', values: TCP_PORT_NAMES },
+    ],
+  },
+  {
+    id: 'tls',
+    name: 'TLS',
+    layer: 7,
+    carriedBy: 'tcp',
+    blurb: 'The encryption almost every TCP stream is wrapped in, and the handshake that sets it up.',
+    reference: 'RFC 8446',
+  },
+  {
+    id: 'http',
+    name: 'HTTP',
+    layer: 7,
+    carriedBy: 'tcp',
+    blurb: 'Text requests and responses over a stream — the protocol the handshake lesson opens a connection for.',
+    reference: 'RFC 9110',
   },
   {
     id: 'udp',
@@ -275,6 +356,10 @@ const CATALOG: readonly CatalogEntry[] = [
     carriedBy: 'udp',
     blurb: 'Names to addresses, with pointer compression that makes decoding genuinely interesting.',
     reference: 'RFC 1035',
+    dictionaries: [
+      { title: 'Record types', values: DNS_TYPE_NAMES },
+      { title: 'Classes', values: DNS_CLASS_NAMES },
+    ],
   },
 ]
 
@@ -371,7 +456,10 @@ export function decodeFrame(frame: Uint8Array): DecodedPacket {
       break
     }
 
-    const result = entry.decode(frame, current.offset, current.context)
+    const result = entry.decode(frame, current.offset, {
+      ...current.context,
+      length: current.length,
+    })
     nodes.push(...result.nodes)
     problems.push(...result.problems)
     summary = result.summary

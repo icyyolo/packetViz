@@ -27,7 +27,10 @@ test('the home page lists every lesson, plus the import and reference cards', as
 test('the concept map filters the lessons, and names what is not implemented', async ({ page }) => {
   await page.goto('#/')
 
-  await expect(page.getByRole('button', { name: /^TCP/ })).toBeDisabled()
+  // TLS and IPv6 are named on the map and not implemented; the block being
+  // unpressable is the only place that claim is made, so it is checked here.
+  await expect(page.getByRole('button', { name: /^TLS/ })).toBeDisabled()
+  await expect(page.getByRole('button', { name: /^TCP/ })).toBeEnabled()
   await page.getByRole('button', { name: /^ARP/ }).click()
 
   const lit = page.locator('.cards .card:not(.card-secondary):not(.is-dimmed)')
@@ -36,7 +39,7 @@ test('the concept map filters the lessons, and names what is not implemented', a
   await expect(page).toHaveURL(/#\/lesson\/arp/)
 })
 
-for (const protocol of ['eth', 'arp', 'ip', 'udp', 'dhcp']) {
+for (const protocol of ['eth', 'arp', 'ip', 'icmp', 'tcp', 'udp', 'dhcp', 'dns']) {
   test(`the ${protocol} reference page renders a diagram and a field table`, async ({ page }) => {
     await page.goto(`#/reference/${protocol}`)
 

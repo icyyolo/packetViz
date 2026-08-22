@@ -11,8 +11,9 @@ import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
-import { leafFields } from '../src/core/field.ts'
+import { leafFields, walkFields } from '../src/core/field.ts'
 import { arpScenario } from '../src/lessons/arp/scenario.ts'
+import { tcpHandshakeScenario } from '../src/lessons/tcp-handshake/scenario.ts'
 import { compileScenario } from '../src/scenario/compile.ts'
 import { FieldDetailPanel } from '../src/views/FieldDetailPanel.tsx'
 import { FieldTreeView } from '../src/views/FieldTreeView.tsx'
@@ -201,5 +202,58 @@ describe('the generic layout table', () => {
     renderLayoutAndHex()
     // The request packet's opcode is 1; the table still documents 2 = Reply.
     expect(screen.getByText('Reply')).toBeTruthy()
+  })
+})
+
+/**
+ * A field id can appear more than once in one packet: every real TCP SYN
+ * carries three No-Operation options, all of them `tcp.opt.1`. Selection is
+ * therefore an id AND an occurrence, and this is the test that says so — it
+ * failed before that change, highlighting the first option's byte whichever of
+ * the three was clicked.
+ */
+describe('a field id that repeats within one packet', () => {
+  const syn = compileScenario(tcpHandshakeScenario).packets[0]!
+
+  function renderSyn() {
+    return render(
+      <MemoryRouter>
+        <SelectionProvider packetCount={1}>
+          <FieldTreeView packet={syn} />
+          <HexView packet={syn} />
+        </SelectionProvider>
+      </MemoryRouter>,
+    )
+  }
+
+  it('has three No-Operation options at three different offsets', () => {
+    const nops = Array.from(walkFields(syn.tree)).filter((node) => node.id === 'tcp.opt.1')
+    expect(nops.map((node) => node.byteStart)).toEqual([58, 59, 62])
+  })
+
+  it('selects the one that was clicked, not the first one with its id', async () => {
+    const user = userEvent.setup()
+    renderSyn()
+
+    const rows = document.querySelectorAll('[data-field-id="tcp.opt.1"]')
+    expect(rows).toHaveLength(3)
+
+    for (const [index, offset] of [58, 59, 62].entries()) {
+      await user.click(rows[index] as HTMLElement)
+      expect(selectedOffsets(), `No-Operation ${index + 1}`).toEqual([offset])
+      // ...and the row that lit up is the one that was clicked.
+      expect(document.querySelectorAll('.tree-row.is-selected')).toHaveLength(1)
+      expect(document.querySelector('.tree-row.is-selected')).toBe(rows[index])
+    }
+  })
+
+  it('selects the right one from the other direction too', async () => {
+    const user = userEvent.setup()
+    renderSyn()
+
+    await user.click(screen.getByLabelText('Byte 62, value 0x01'))
+    const selected = document.querySelector('.tree-row.is-selected')
+    expect(selected?.getAttribute('data-field-id')).toBe('tcp.opt.1')
+    expect(document.querySelectorAll('[data-field-id="tcp.opt.1"]')[2]).toBe(selected)
   })
 })

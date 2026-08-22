@@ -11,7 +11,7 @@
  */
 
 import { useCallback, useMemo, useRef, useState } from 'react'
-import type { DecodedPacket, FieldNode } from '../core/field.ts'
+import { walkFields, type DecodedPacket, type FieldNode } from '../core/field.ts'
 import { useSelection } from './selection.ts'
 
 export type FieldTreeViewProps = {
@@ -24,16 +24,26 @@ type Row = {
   hasChildren: boolean
   expanded: boolean
   parentId: string | null
+  /** Which node with this id, in wire order. Repeats are legal: see selection.ts. */
+  occurrence: number
 }
 
 export function FieldTreeView({ packet }: FieldTreeViewProps) {
-  const { selectedFieldId, hoveredFieldId, selectField, hoverField } = useSelection()
+  const { selectedFieldId, selectedOccurrence, hoveredFieldId, hoveredOccurrence, selectField, hoverField } =
+    useSelection()
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set())
   const [requestedFocus, setRequestedFocus] = useState(0)
   const items = useRef<(HTMLLIElement | null)[]>([])
   const shouldFocus = useRef(false)
 
-  const rows = useMemo(() => flatten(packet.tree, collapsed), [packet, collapsed])
+  // Occurrences are numbered over the WHOLE tree, not over the rendered rows:
+  // `nodeOf` in selection.ts numbers them the same way, and a collapsed subtree
+  // must not shift what "the second tcp.opt.1" means.
+  const occurrences = useMemo(() => numberOccurrences(packet.tree), [packet])
+  const rows = useMemo(
+    () => flatten(packet.tree, collapsed, occurrences),
+    [packet, collapsed, occurrences],
+  )
   const focusIndex = Math.min(requestedFocus, Math.max(0, rows.length - 1))
 
   const moveTo = useCallback((index: number) => {
@@ -96,7 +106,7 @@ export function FieldTreeView({ packet }: FieldTreeViewProps) {
         case 'Enter':
         case ' ':
           event.preventDefault()
-          selectField(row.node.id)
+          selectField(row.node.id, row.occurrence)
           break
         default:
           break
@@ -117,11 +127,11 @@ export function FieldTreeView({ packet }: FieldTreeViewProps) {
           field NAMES repeat inside a DHCP option list ("Option code", "Length",
           "Value"), so a test cannot address a row by its text. */}
       {rows.map((row, index) => {
-        const isSelected = row.node.id === selectedFieldId
-        const isHovered = row.node.id === hoveredFieldId
+        const isSelected = row.node.id === selectedFieldId && row.occurrence === selectedOccurrence
+        const isHovered = row.node.id === hoveredFieldId && row.occurrence === hoveredOccurrence
         return (
           <li
-            key={row.node.id}
+            key={`${row.node.id}#${row.occurrence}`}
             ref={(element) => {
               items.current[index] = element
               if (index === focusIndex) applyFocus(index)
@@ -138,9 +148,9 @@ export function FieldTreeView({ packet }: FieldTreeViewProps) {
             onClick={(event) => {
               event.stopPropagation()
               setRequestedFocus(index)
-              selectField(row.node.id)
+              selectField(row.node.id, row.occurrence)
             }}
-            onMouseEnter={() => hoverField(row.node.id)}
+            onMouseEnter={() => hoverField(row.node.id, row.occurrence)}
           >
             {row.hasChildren ? (
               <button
@@ -172,9 +182,22 @@ export function FieldTreeView({ packet }: FieldTreeViewProps) {
   )
 }
 
+/** Which node with each id, in wire order, for every node in the tree. */
+function numberOccurrences(tree: readonly FieldNode[]): ReadonlyMap<FieldNode, number> {
+  const occurrences = new Map<FieldNode, number>()
+  const seen = new Map<string, number>()
+  for (const node of walkFields(tree)) {
+    const occurrence = seen.get(node.id) ?? 0
+    seen.set(node.id, occurrence + 1)
+    occurrences.set(node, occurrence)
+  }
+  return occurrences
+}
+
 function flatten(
   nodes: readonly FieldNode[],
   collapsed: ReadonlySet<string>,
+  occurrences: ReadonlyMap<FieldNode, number>,
   level = 0,
   parentId: string | null = null,
   out: Row[] = [],
@@ -182,8 +205,17 @@ function flatten(
   for (const node of nodes) {
     const hasChildren = node.children !== undefined && node.children.length > 0
     const expanded = hasChildren && !collapsed.has(node.id)
-    out.push({ node, level, hasChildren, expanded, parentId })
-    if (expanded && node.children) flatten(node.children, collapsed, level + 1, node.id, out)
+    out.push({
+      node,
+      level,
+      hasChildren,
+      expanded,
+      parentId,
+      occurrence: occurrences.get(node) ?? 0,
+    })
+    if (expanded && node.children) {
+      flatten(node.children, collapsed, occurrences, level + 1, node.id, out)
+    }
   }
   return out
 }

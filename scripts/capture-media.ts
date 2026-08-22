@@ -86,6 +86,22 @@ async function captureStills(browser: Awaited<ReturnType<typeof chromium.launch>
   await page.locator('.packet-tab').nth(3).click()
   await shoot(page, 'dhcp-stack.png', '.panes')
 
+  // The TCP handshake, with the acknowledgement number selected: the fact the
+  // lesson is about is a relationship between two packets, and this is the
+  // field that carries it.
+  await open(page, '#/lesson/tcp-handshake')
+  await page.locator('.packet-tab').nth(1).click()
+  await page.locator('[data-field-id="tcp.ack"]').first().click()
+  await shoot(page, 'tcp-handshake.png', '.panes')
+
+  // Name compression: two bytes selected in the hex grid, and a nineteen-byte
+  // name in the field tree. The clearest single picture of why a decoder cannot
+  // read a field in isolation.
+  await open(page, '#/lesson/dns')
+  await page.locator('.packet-tab').nth(1).click()
+  await page.locator('[data-field-id="dns.resp.name"]').first().click()
+  await shoot(page, 'dns-compression.png', '.panes')
+
   // A capture this project did not write, read in the same four layers.
   await open(page, '#/import')
   await page.locator('input[type="file"]').setInputFiles({

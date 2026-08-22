@@ -13,6 +13,12 @@ import { arpSpoofingNarration } from './arp-spoofing/narration.ts'
 import { arpSpoofingScenario } from './arp-spoofing/scenario.ts'
 import { dhcpNarration } from './dhcp/narration.ts'
 import { dhcpScenario } from './dhcp/scenario.ts'
+import { dnsNarration } from './dns/narration.ts'
+import { dnsScenario } from './dns/scenario.ts'
+import { pingNarration } from './ping/narration.ts'
+import { pingScenario } from './ping/scenario.ts'
+import { tcpHandshakeNarration } from './tcp-handshake/narration.ts'
+import { tcpHandshakeScenario } from './tcp-handshake/scenario.ts'
 
 export type LessonMeta = {
   slug: string
@@ -54,6 +60,33 @@ export const LESSONS: readonly Lesson[] = [
     scenario: dhcpScenario,
     narration: dhcpNarration,
     filename: 'dhcp.pcap',
+  },
+  {
+    slug: 'ping',
+    title: 'Ping: the smallest useful program',
+    blurb:
+      'Send something, ask for it back, time how long it takes. Four ICMP messages with no ports, no connection and no length field of their own.',
+    scenario: pingScenario,
+    narration: pingNarration,
+    filename: 'ping.pcap',
+  },
+  {
+    slug: 'tcp-handshake',
+    title: 'TCP: three packets before a byte of data',
+    blurb:
+      'Two random numbers, exchanged and acknowledged. The first lesson here where the fact that matters lives between the packets rather than inside one.',
+    scenario: tcpHandshakeScenario,
+    narration: tcpHandshakeNarration,
+    filename: 'tcp-handshake.pcap',
+  },
+  {
+    slug: 'dns',
+    title: 'DNS: a name that is not in the field',
+    blurb:
+      'A query and its answer, where the answer\'s name is two bytes meaning "the name I already sent you". Pointer compression, and what a decoder has to do about loops.',
+    scenario: dnsScenario,
+    narration: dnsNarration,
+    filename: 'dns.pcap',
   },
 ]
 

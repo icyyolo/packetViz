@@ -21,10 +21,10 @@ export type FieldDetailPanelProps = {
 }
 
 export function FieldDetailPanel({ packet }: FieldDetailPanelProps) {
-  const { selectedFieldId, hoveredFieldId } = useSelection()
+  const { selectedFieldId, selectedOccurrence, hoveredFieldId, hoveredOccurrence } = useSelection()
 
-  const selected = nodeOf(packet, selectedFieldId)
-  const hovered = nodeOf(packet, hoveredFieldId)
+  const selected = nodeOf(packet, selectedFieldId, selectedOccurrence)
+  const hovered = nodeOf(packet, hoveredFieldId, hoveredOccurrence)
   const node = hovered ?? selected
   const previewing = hovered !== undefined && hovered.id !== selected?.id
 
