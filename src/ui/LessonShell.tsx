@@ -20,6 +20,7 @@ import { LayoutView } from '../views/LayoutView.tsx'
 import { PacketDiffView } from '../views/PacketDiffView.tsx'
 import { TopologyView } from '../views/TopologyView.tsx'
 import { useArpCaches } from '../views/arpCache.ts'
+import { useEditableTimeline } from '../views/edits.ts'
 import { useSelection } from '../views/selection.ts'
 import { ExportPcapButton } from './ExportPcapButton.tsx'
 import { Scrubber } from './Scrubber.tsx'
@@ -34,9 +35,15 @@ export type LessonShellProps = {
 }
 
 export function LessonShell(props: LessonShellProps) {
-  const { title, blurb, timeline, narration, filename, clock } = props
+  const { title, blurb, narration, filename, clock } = props
   const { tMs } = useClockSnapshot(clock)
   const { packetIndex, selectPacket, selectField } = useSelection()
+
+  // Layer 4 is writable, so every layer below reads the EDITED timeline: the
+  // ladder's labels, the neighbour caches and the exported capture are all
+  // decodes of whatever bytes the frame currently holds, which is the whole
+  // point of letting a visitor type into the hex grid.
+  const { timeline, edited, setByte, reset } = useEditableTimeline(props.timeline)
 
   const snapshots = useArpCaches(timeline)
   const currentMark = markAt(timeline.marks, tMs)
@@ -92,6 +99,7 @@ export function LessonShell(props: LessonShellProps) {
             <span className="packet-tab-index">#{index + 1}</span>
             <span className="packet-tab-summary">{decoded.summary}</span>
             <span className="packet-tab-size">{decoded.frame.length} B</span>
+            {edited.has(index) ? <span className="packet-tab-edited">modified</span> : null}
           </button>
         ))}
       </nav>
@@ -122,8 +130,26 @@ export function LessonShell(props: LessonShellProps) {
               <FieldTreeView packet={packet} />
             </div>
             <div className="pane pane-hex">
-              <h2>Bytes on the wire</h2>
-              <HexView packet={packet} />
+              <h2>
+                Bytes on the wire
+                {edited.has(packetIndex) ? (
+                  <span className="edited-badge">modified</span>
+                ) : null}
+              </h2>
+              {edited.has(packetIndex) ? (
+                <button
+                  type="button"
+                  className="reset-button"
+                  onClick={() => reset(packetIndex)}
+                >
+                  Reset to the scenario's bytes
+                </button>
+              ) : null}
+              <HexView
+                packet={packet}
+                baseline={props.timeline.packets[packetIndex]?.frame}
+                onEditByte={(offset, value) => setByte(packetIndex, offset, value)}
+              />
             </div>
             <div className="pane pane-detail">
               <h2>Field detail</h2>

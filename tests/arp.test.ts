@@ -103,6 +103,38 @@ describe('ARP', () => {
     expect(findField(packet.tree, 'arp.opcode')?.value).toBe('9 (unknown)')
   })
 
+  /**
+   * `ARP_SPECS` is the Ethernet/IPv4 shape, so the two length bytes are the only
+   * fields the rest of the decode depends on. A frame that disagrees with them
+   * is one we are reading at the wrong offsets, and Wireshark says so too — see
+   * the hand-edited-frame case in `tshark-diff.test.ts`.
+   */
+  it('refuses to read past a hardware-address length it does not implement', () => {
+    const frame = Uint8Array.from(framed(request, BROADCAST_MAC, HOST_A.mac))
+    frame[ETH_HEADER_BYTES + 4] = 0xff
+
+    const packet = decodeFrame(frame)
+    expect(packet.problems).toHaveLength(1)
+    expect(packet.problems[0]?.severity).toBe('error')
+    expect(packet.problems[0]?.byteStart).toBe(ETH_HEADER_BYTES + 4)
+    expect(packet.problems[0]?.message).toContain('6-byte hardware addresses')
+    // The fields still decode, so the offending byte stays linked to the hex view.
+    expect(findField(packet.tree, 'arp.hw.size')?.value).toBe('255 bytes')
+  })
+
+  it('says the same about a protocol-address length, which tshark accepts in silence', () => {
+    const frame = Uint8Array.from(framed(request, BROADCAST_MAC, HOST_A.mac))
+    frame[ETH_HEADER_BYTES + 5] = 0x08
+
+    const packet = decodeFrame(frame)
+    expect(packet.problems).toHaveLength(1)
+    expect(packet.problems[0]?.message).toContain('4-byte protocol addresses')
+  })
+
+  it('leaves a well-formed frame problem-free', () => {
+    expect(decodeFrame(framed(request, BROADCAST_MAC, HOST_A.mac)).problems).toEqual([])
+  })
+
   it('explains every field it decodes', () => {
     for (const spec of ARP_SPECS) {
       expect(spec.description.length, `${spec.id} has no description`).toBeGreaterThan(0)

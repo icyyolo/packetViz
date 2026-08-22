@@ -27,7 +27,7 @@ import { writePcap } from '../src/core/pcap/write.ts'
 import { decodeFrame } from '../src/core/registry.ts'
 import { arpSpoofingScenario } from '../src/lessons/arp-spoofing/scenario.ts'
 import type { PcapPacket } from '../src/core/pcap/write.ts'
-import { arpExchange, lessonCapture } from './fixtures.ts'
+import { arpExchange, arpRequestFrame, lessonCapture } from './fixtures.ts'
 
 type Kind = 'mac' | 'ipv4' | 'number' | 'bytes'
 
@@ -158,6 +158,39 @@ describe('Wireshark differential', () => {
     // this claim, and prose is not evidence.
     ['4\tDuplicate IP address configured (10.0.0.2)'],
   )
+
+  /**
+   * Phase 3.5 makes layer 4 writable, so the oracle should also be asked about
+   * bytes a visitor typed rather than only about bytes we encoded. The hardware
+   * address length is the one ARP field the rest of the parse depends on: lie
+   * about it and tshark sizes its fields from the lie, runs off the end of the
+   * frame and reports a malformed packet at error severity. Our decoder must
+   * not shrug at a frame Wireshark refuses to dissect.
+   */
+  it.skipIf(!available)('agrees that a hand-edited hardware-address length is malformed', () => {
+    const edited = Uint8Array.from(arpRequestFrame())
+    const hwSizeOffset = 18 // Ethernet header (14) + htype (2) + ptype (2)
+    edited[hwSizeOffset] = 0xff
+
+    const dir = mkdtempSync(join(tmpdir(), 'packetviz-edit-'))
+    const file = join(dir, 'edited.pcap')
+    writeFileSync(file, writePcap([{ frame: edited, tMs: 0 }]))
+
+    const expert = execFileSync(
+      'tshark',
+      ['-r', file, '-T', 'fields', '-e', '_ws.expert.message', '-e', '_ws.expert.severity'],
+      { encoding: 'utf8' },
+    ).trim()
+    rmSync(dir, { recursive: true, force: true })
+
+    expect(expert).toContain('Malformed Packet')
+    expect(Number.parseInt(expert.split('\t')[1] ?? '0', 10)).toBeGreaterThanOrEqual(0x800000)
+
+    const ours = decodeFrame(edited).problems
+    expect(ours).toHaveLength(1)
+    expect(ours[0]?.severity).toBe('error')
+    expect(ours[0]?.byteStart).toBe(hwSizeOffset)
+  })
 })
 
 function differential(

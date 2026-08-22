@@ -50,9 +50,17 @@ function sectionAt(sections: readonly Section[], offset: number): Section | unde
 
 export type HexViewProps = {
   packet: DecodedPacket
+  /**
+   * Makes the grid writable. The handler receives a byte offset and a new value
+   * and is expected to produce a fresh buffer; this view never mutates
+   * `packet.frame`, which is the scenario's own array.
+   */
+  onEditByte?: (offset: number, value: number) => void
+  /** The unedited bytes, so a changed byte can be marked as changed. */
+  baseline?: Uint8Array
 }
 
-export function HexView({ packet }: HexViewProps) {
+export function HexView({ packet, onEditByte, baseline }: HexViewProps) {
   const { selectedFieldId, hoveredFieldId, selectField, hoverField } = useSelection()
   const frame = packet.frame
   const selected = spanOf(packet, selectedFieldId)
@@ -60,6 +68,8 @@ export function HexView({ packet }: HexViewProps) {
   const sections = sectionsOf(packet)
 
   const [requestedFocus, setFocusOffset] = useState(0)
+  /** First digit of a two-digit entry, waiting for its partner. */
+  const [pending, setPending] = useState<{ offset: number; nibble: number } | null>(null)
   const cells = useRef<(HTMLDivElement | null)[]>([])
   const shouldFocus = useRef(false)
 
@@ -92,6 +102,38 @@ export function HexView({ packet }: HexViewProps) {
 
   const onKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLDivElement>) => {
+      // Editing keys first, and they all return: navigation keeps the arrows,
+      // which is the accessible path through the grid and worth more than the
+      // hex-editor convention of nudging a value with them.
+      if (onEditByte !== undefined) {
+        if (/^[0-9a-fA-F]$/.test(event.key)) {
+          event.preventDefault()
+          const digit = Number.parseInt(event.key, 16)
+          if (pending !== null && pending.offset === focusOffset) {
+            onEditByte(focusOffset, pending.nibble * 16 + digit)
+            setPending(null)
+          } else {
+            setPending({ offset: focusOffset, nibble: digit })
+          }
+          return
+        }
+        if (event.key === '+' || event.key === '-') {
+          event.preventDefault()
+          const current = frame[focusOffset]
+          if (current !== undefined) {
+            onEditByte(focusOffset, (current + (event.key === '+' ? 1 : 255)) % 256)
+          }
+          setPending(null)
+          return
+        }
+        if (event.key === 'Escape') {
+          event.preventDefault()
+          setPending(null)
+          return
+        }
+      }
+      setPending(null)
+
       const keys: Record<string, number> = {
         ArrowRight: 1,
         ArrowLeft: -1,
@@ -123,7 +165,7 @@ export function HexView({ packet }: HexViewProps) {
         selectAt(focusOffset)
       }
     },
-    [focusOffset, frame.length, moveTo, selectAt],
+    [focusOffset, frame, moveTo, onEditByte, pending, selectAt],
   )
 
   const rowCount = Math.max(1, Math.ceil(frame.length / BYTES_PER_ROW))
@@ -146,6 +188,14 @@ export function HexView({ packet }: HexViewProps) {
         ))}
       </ul>
 
+      {onEditByte === undefined ? null : (
+        <p className="hex-hint" id="hex-edit-hint">
+          The bytes are writable: focus one and type two hex digits to rewrite it,
+          <kbd>+</kbd> or <kbd>-</kbd> to nudge it by one, <kbd>Esc</kbd> to cancel a
+          half-typed byte. Every edit rebuilds the packet from the new buffer.
+        </p>
+      )}
+
       <div className="hex-head">
         <span className="hex-offset" aria-hidden="true">
           offset
@@ -166,7 +216,9 @@ export function HexView({ packet }: HexViewProps) {
         className="hex-grid"
         role="grid"
         aria-label={`Frame bytes, ${frame.length} total`}
-        aria-describedby="field-detail-panel"
+        aria-describedby={
+          onEditByte === undefined ? 'field-detail-panel' : 'field-detail-panel hex-edit-hint'
+        }
         aria-rowcount={rowCount}
         aria-colcount={BYTES_PER_ROW}
         onKeyDown={onKeyDown}
@@ -185,6 +237,8 @@ export function HexView({ packet }: HexViewProps) {
                 if (byte === undefined) {
                   return <span className="hex-cell hex-empty" key={column} aria-hidden="true" />
                 }
+                const typing = pending !== null && pending.offset === offset
+                const changed = baseline !== undefined && baseline[offset] !== byte
                 return (
                   <div
                     key={column}
@@ -194,7 +248,10 @@ export function HexView({ packet }: HexViewProps) {
                     role="gridcell"
                     aria-colindex={column + 1}
                     tabIndex={offset === focusOffset ? 0 : -1}
-                    className={cellClass(offset, selected, hovered, packet.problems, sections)}
+                    className={cellClass(offset, selected, hovered, packet.problems, sections, {
+                      typing,
+                      changed,
+                    })}
                     aria-label={describeByte(offset, byte)}
                     aria-selected={inSpan(selected, offset)}
                     onClick={() => {
@@ -204,7 +261,7 @@ export function HexView({ packet }: HexViewProps) {
                     onFocus={() => setFocusOffset(offset)}
                     onMouseEnter={() => hoverField(fieldAtOffset(packet, offset)?.id ?? null)}
                   >
-                    {byte.toString(16).padStart(2, '0')}
+                    {typing ? `${pending.nibble.toString(16)}_` : byte.toString(16).padStart(2, '0')}
                   </div>
                 )
               })}
@@ -241,10 +298,13 @@ function cellClass(
   hovered: Span | null,
   problems: readonly Problem[],
   sections: readonly Section[],
+  state: { typing: boolean; changed: boolean },
 ): string {
   const classes = ['hex-cell']
   const section = sectionAt(sections, offset)
   if (section !== undefined) classes.push(`is-sect-${section.index % 4}`)
+  if (state.changed) classes.push('is-edited')
+  if (state.typing) classes.push('is-typing')
   if (inSpan(selected, offset)) classes.push('is-selected')
   if (inSpan(hovered, offset)) classes.push('is-hovered')
   for (const problem of problems) {

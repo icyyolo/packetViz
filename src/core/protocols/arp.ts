@@ -6,7 +6,13 @@
  */
 
 import { ByteWriter } from '../bytes.ts'
-import { findField, type DecodeResult, type DecodedPacket, type FieldNode } from '../field.ts'
+import {
+  findField,
+  type DecodeResult,
+  type DecodedPacket,
+  type FieldNode,
+  type Problem,
+} from '../field.ts'
 import { formatIpv4, formatMac, hex, parseIpv4, parseMac } from '../format.ts'
 import { enumRender, runSpec, specBytes, type FieldSpec } from '../spec.ts'
 import { BROADCAST_MAC, ETHER_TYPE, ETHER_TYPE_NAMES, encodeEthernet } from './ethernet.ts'
@@ -136,9 +142,43 @@ export function encodeArp(input: ArpInput): Uint8Array {
     .finish()
 }
 
+/**
+ * The two length bytes are the only fields whose value the rest of this decode
+ * depends on. `ARP_SPECS` is the Ethernet/IPv4 shape — six-byte hardware
+ * addresses, four-byte protocol addresses — so a frame that claims different
+ * sizes is one whose remaining fields we are reading at the wrong offsets, and
+ * saying so is more honest than rendering the addresses anyway.
+ *
+ * Wireshark agrees, loudly, for the hardware length: setting it to 0xff makes
+ * tshark size its fields from the lie, run off the end of the frame and report
+ * `Malformed Packet (Exception occurred)` at error severity. A protocol length
+ * of 8 it accepts in silence and prints eight-byte "IP addresses" — so this is
+ * one place our decoder says more than the oracle does, not less.
+ */
+function shapeProblems(nodes: readonly FieldNode[]): Problem[] {
+  const problems: Problem[] = []
+
+  const check = (id: string, expected: number, what: string): void => {
+    const node = findField(nodes, id)
+    const actual = node?.raw[0]
+    if (node === undefined || actual === undefined || actual === expected) return
+    problems.push({
+      severity: 'error',
+      message: `${node.name} is ${actual}, but this decoder reads the ${expected}-byte ${what} of ARP over Ethernet and IPv4; every field after this byte is being read at the wrong offset`,
+      byteStart: node.byteStart,
+      byteLength: node.byteLength,
+    })
+  }
+
+  check('arp.hw.size', ARP_HW_SIZE_ETHERNET, 'hardware addresses')
+  check('arp.proto.size', ARP_PROTO_SIZE_IPV4, 'protocol addresses')
+  return problems
+}
+
 export function decodeArp(frame: Uint8Array, offset: number): DecodeResult {
   const run = runSpec(ARP_SPECS, frame, offset)
   const truncated = run.problems.length > 0
+  const problems = truncated ? run.problems : [...run.problems, ...shapeProblems(run.nodes)]
 
   const node: FieldNode = {
     id: 'arp',
@@ -155,7 +195,7 @@ export function decodeArp(frame: Uint8Array, offset: number): DecodeResult {
 
   return {
     nodes: [node],
-    problems: run.problems,
+    problems,
     summary: truncated ? 'ARP (truncated)' : summarise(run.nodes),
     byteLength: run.byteLength,
   }

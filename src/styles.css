@@ -609,3 +609,69 @@ main {
 .hex-cell[class*='is-sect-']:not(.is-selected) {
   background: color-mix(in srgb, var(--sect) 12%, transparent);
 }
+
+/* ---------- writable bytes ---------- */
+
+.hex-hint {
+  margin: 0 0 0.5rem;
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  max-width: 46rem;
+}
+.hex-hint kbd {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 0 0.25rem;
+  margin: 0 0.15rem;
+  color: var(--text);
+}
+
+/* An edited byte is marked in colour AND in weight/slant, so the diff from the
+   scenario's bytes survives greyscale like every other state in this UI. The
+   :not(.is-selected) mirrors the header-band rule it has to out-rank. */
+.hex-cell.is-edited:not(.is-selected) {
+  background: color-mix(in srgb, var(--accent-2) 25%, transparent);
+}
+.hex-cell.is-edited { font-weight: 700; font-style: italic; }
+
+/* Half-typed byte: one nibble in, waiting for the second. */
+.hex-cell.is-typing {
+  border-color: var(--accent-2);
+  border-style: dashed;
+  color: var(--accent-2);
+  font-weight: 700;
+}
+
+.edited-badge {
+  margin-left: 0.5rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--accent-2);
+  border: 1px solid var(--accent-2);
+  border-radius: 999px;
+  padding: 0.05rem 0.45rem;
+  vertical-align: middle;
+}
+.packet-tab-edited {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--accent-2);
+}
+.reset-button {
+  display: block;
+  margin: 0 0 0.5rem;
+  padding: 0.25rem 0.6rem;
+  font: inherit;
+  font-size: 0.8rem;
+  background: var(--bg-raised);
+  color: var(--text);
+  border: 1px solid var(--accent-2);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.reset-button:hover { border-color: var(--accent); }

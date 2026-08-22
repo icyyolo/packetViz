@@ -360,9 +360,9 @@ agree field-for-field on generated ARP traffic.
 **Phase 3 done when:** the ARP lesson satisfies the lesson definition of done
 below.
 
-> **Status: complete (2026-08-21), 3.0 through 3.13.** Phase 3.5 (live hex
-> editing) is not started. 90 tests green across 13 files, lint clean, build
-> clean.
+> **Status: complete (2026-08-21), 3.0 through 3.13.** 90 tests green across 13
+> files, lint clean, build clean. (Phase 3.5, live hex editing, completed
+> 2026-08-22 — see its own status block below.)
 >
 > Six deviations, all deliberate:
 >
@@ -469,6 +469,41 @@ Phase 1.6 contract.
 
 **Why this matters:** it converts the single-source-of-truth invariant from a
 README claim into something an interviewer can falsify in five seconds.
+
+> **Status: complete (2026-08-22), 3.5.1 through 3.5.4; 3.5.5 deferred to Phase
+> 6.** 128 tests green across 16 files, lint clean, build clean. Editing lives in
+> `views/edits.ts` (`useEditableTimeline`), the writable grid in `views/HexView.tsx`,
+> the badge and Reset in `ui/LessonShell.tsx`. `tests/hex-edit.dom.test.tsx`
+> covers all five behaviours in a real DOM.
+>
+> Four deviations:
+>
+> 1. **`+` and `-` nudge a byte, not the arrow keys.** 3.5.1 asked for ±1 on the
+>    arrows, but the arrows are the roving-tabindex navigation the grid was given
+>    in 3.13, and a keyboard user who cannot move without editing is worse off
+>    than one who has to reach for a different key. Two hex digits still type a
+>    byte outright; `Esc` drops a half-typed one.
+> 2. **The decoder had to learn to distrust ARP's length bytes.** 3.5.4 says
+>    setting the hardware-address length to `0xFF` should raise a `Problem`, and
+>    before this phase it did not: `ARP_SPECS` is a fixed layout, so lying about
+>    `arp.hw.size` only changed a rendered string. `decodeArp` now checks both
+>    length bytes against the Ethernet/IPv4 shape it actually implements and
+>    reports an error on the offending byte, which is a real statement — every
+>    field after it is being read at the wrong offset.
+> 3. **The oracle was asked about hand-edited bytes, not just generated ones.**
+>    tshark reports `Malformed Packet (Exception occurred)` at severity
+>    `0x800000` for `arp.hw.size = 0xff`, and pinning that alongside our own
+>    problem is now a test. It also revealed a place where we say *more* than
+>    Wireshark: `arp.proto.size = 8` produces no expert info at all — tshark
+>    prints eight-byte "IP addresses" in silence — and we flag it.
+> 4. **Edited bytes are marked individually**, not just the packet. The plan asks
+>    only for a per-packet badge; a byte that differs from the scenario's also
+>    carries its own colour, weight and slant, so "what did I change" is visible
+>    without a diff.
+>
+> 3.5.5 waits for Phase 6.1 to install Playwright, on the same reasoning as
+> Phase 3's deviation #5: the jsdom test is a floor that runs on every commit,
+> and the browser-level sweep still lands with the rest of the E2E gates.
 
 ### Phase 4 — IPv4, UDP, DHCP codec
 
